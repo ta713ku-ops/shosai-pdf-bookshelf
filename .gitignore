@@ -1,0 +1,15 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+.env
+.env.*
+!.env.example
+build/
+.next/
+.vercel/
+serviceAccountKey.json
+*service-account*.json
+*ServiceAccount*.json
+*.pem
+*.key

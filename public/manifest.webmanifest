@@ -1,0 +1,14 @@
+{
+  "id": "./",
+  "name": "書斎",
+  "short_name": "書斎",
+  "description": "自分のPDFを並べて読む、静かな本棚。",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f5f0e6",
+  "theme_color": "#f5f0e6",
+  "icons": [{ "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
