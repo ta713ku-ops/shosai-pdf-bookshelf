@@ -75,7 +75,7 @@ describe('Reader immersive controls and gestures', () => {
     fireEvent.pointerUp(stage, { pointerId: 1, clientX: 500, clientY: 400 });
     expect(reader).not.toHaveClass('reader-ui-hidden');
 
-    act(() => vi.advanceTimersByTime(3600));
+    act(() => vi.advanceTimersByTime(4000));
     expect(reader).toHaveClass('reader-ui-hidden');
   });
 
@@ -89,6 +89,6 @@ describe('Reader immersive controls and gestures', () => {
     expect(stage.querySelector('.reader-pages')).toHaveClass('is-dragging');
     fireEvent.pointerUp(stage, { pointerId: 1, clientX: 420, clientY: 402 });
     act(() => vi.advanceTimersByTime(190));
-    await waitFor(() => expect(onProgress).toHaveBeenCalledWith(2));
+    await waitFor(() => expect(onProgress).toHaveBeenCalledWith(3));
   });
 });

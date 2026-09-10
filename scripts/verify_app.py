@@ -6,13 +6,15 @@ from playwright.sync_api import sync_playwright
 
 
 def make_pdf() -> bytes:
-    stream = b"BT /F1 28 Tf 72 700 Td (Shosai Test Book) Tj ET"
+    streams = [f"BT /F1 28 Tf 72 700 Td (Shosai Test Book - Page {number}) Tj ET".encode() for number in range(1, 4)]
     objects = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
-        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R] /Count 3 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 6 0 R >> >> /Contents 7 0 R >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 6 0 R >> >> /Contents 8 0 R >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 6 0 R >> >> /Contents 9 0 R >>",
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-        b"<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream),
+        *[b"<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream) for stream in streams],
     ]
     data = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
     offsets = [0]
@@ -61,33 +63,50 @@ def main() -> None:
         page.get_by_role("button", name="追加", exact=True).click()
         page.locator('.shelf-delete[aria-label="雑誌を削除"]').wait_for(state="attached")
 
-        page.locator('input[type="file"]').set_input_files({
-            "name": "friend-plan.pdf",
-            "mimeType": "application/pdf",
-            "buffer": make_pdf(),
-        })
-        page.get_by_role("button", name="friend-planを開く。1/1ページ").wait_for(timeout=15_000)
-        page.locator('input[type="file"]').set_input_files([
-            {"name": "second.pdf", "mimeType": "application/pdf", "buffer": make_pdf()},
-            {"name": "broken.pdf", "mimeType": "application/pdf", "buffer": b"not a pdf"},
-        ])
-        page.get_by_text("追加 1冊・除外 0件・失敗 1件。除外は重複またはPDF以外です。").wait_for(timeout=15_000)
-        page.get_by_role("button", name="secondを開く。1/1ページ").wait_for(timeout=15_000)
+        imports = [{"name": f"book-{index:02}.pdf", "mimeType": "application/pdf", "buffer": make_pdf()} for index in range(1, 27)]
+        page.locator('input[type="file"]').set_input_files(imports)
+        page.get_by_role("button", name="book-01を開く。1/3ページ").wait_for(timeout=30_000)
+        page.get_by_role("button", name="棚ページ2へ移動").wait_for(timeout=15_000)
+        if page.locator(".book-menu").count():
+            raise AssertionError("The obsolete black circular book control still exists")
+        page.get_by_role("button", name="棚ページ2へ移動").click()
+        page.wait_for_timeout(500)
+        if "棚ページ2/3" not in (page.locator(".bookshelf").get_attribute("aria-label") or ""):
+            raise AssertionError("Shelf page did not move to page 2")
+        page.get_by_role("button", name="book-13を開く。1/3ページ").wait_for()
+        page.get_by_role("button", name="棚ページ3へ移動").click()
+        page.get_by_role("button", name="book-25を開く。1/3ページ").wait_for()
+        page.get_by_role("button", name="棚ページ1へ移動").click()
+        first_cover = page.get_by_role("button", name="book-01を開く。1/3ページ")
+        first_cover.focus()
+        first_cover.press("Shift+F10")
+        page.get_by_role("dialog", name="本の情報").wait_for()
+        page.get_by_role("button", name="閉じる").click()
+        first_cover.evaluate("element => element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 9, pointerType: 'touch', clientX: 100, clientY: 200 }))")
+        page.wait_for_timeout(550)
+        page.get_by_role("dialog", name="本の情報").wait_for()
+        first_cover.evaluate("element => element.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 9, pointerType: 'touch', clientX: 100, clientY: 200 }))")
+        page.get_by_role("button", name="閉じる").click()
+        page.locator(".library-menu-trigger").click()
+        page.get_by_role("button", name="本棚を整理").click()
+        if page.locator(".book-edit-action").first.evaluate("element => getComputedStyle(element).clipPath") == "inset(50%)":
+            raise AssertionError("Organize mode did not reveal editing controls")
+        page.locator(".organize-bar").get_by_role("button", name="完了").click()
         page.screenshot(path=output / "shosai-library-landscape.png", full_page=True)
-        page.get_by_role("button", name="friend-planを開く。1/1ページ").click()
-        page.wait_for_function("document.fullscreenElement !== null", timeout=5_000)
-        page.get_by_role("dialog", name="friend-planを読む").wait_for(timeout=15_000)
+        page.get_by_role("button", name="book-01を開く。1/3ページ").click()
+        page.wait_for_function("document.fullscreenElement === null", timeout=5_000)
+        page.get_by_role("dialog", name="book-01を読む").wait_for(timeout=15_000)
         page.get_by_role("img", name="1ページ").wait_for(timeout=15_000)
+        if page.locator(".reader-page").count() != 2:
+            raise AssertionError("Landscape reader should show a two-page spread")
         if page.locator(".reader").evaluate("element => !element.classList.contains('reader-ui-hidden')"):
             raise AssertionError("Reader controls should start hidden")
         page.screenshot(path=output / "shosai-reader-landscape.png")
         page.locator(".reader-stage").click(position={"x": 590, "y": 410})
-        page.get_by_role("button", name="全画面を解除").wait_for()
         page.get_by_role("button", name="本棚に戻る").click()
-        page.wait_for_function("document.fullscreenElement === null", timeout=5_000)
 
         page.reload(wait_until="networkidle")
-        page.get_by_role("button", name="friend-planを開く。1/1ページ").wait_for(timeout=10_000)
+        page.get_by_role("button", name="book-01を開く。1/3ページ").wait_for(timeout=10_000)
         page.set_viewport_size({"width": 820, "height": 1180})
         page.wait_for_timeout(300)
         page.locator(".library-menu-trigger").click()
@@ -101,19 +120,21 @@ def main() -> None:
         context.set_offline(True)
         page.reload(wait_until="domcontentloaded")
         page.get_by_role("heading", name="すべての本").wait_for(timeout=10_000)
-        page.get_by_role("button", name="friend-planを開く。1/1ページ").click()
+        page.get_by_role("button", name="book-01を開く。1/3ページ").click()
         page.wait_for_timeout(2000)
         if not page.get_by_role("img", name="1ページ").count():
             page.screenshot(path=output / "shosai-reader-offline-failure.png", full_page=True)
             raise AssertionError(f"Offline reader did not render. body={page.locator('body').inner_text()!r} errors={errors!r}")
         page.get_by_role("img", name="1ページ").wait_for(timeout=15_000)
+        if page.locator(".reader-page").count() != 1:
+            raise AssertionError("Portrait reader should show one page")
         page.screenshot(path=output / "shosai-reader-offline.png")
         context.set_offline(False)
         browser.close()
 
     if errors:
         raise AssertionError("\n".join(errors))
-    print("Verified partial import recovery, shelf controls, cover generation, fullscreen reader entry/exit, persistence, offline reading, and landscape/portrait layouts.")
+    print("Verified derived shelf pages, stable ordering, hidden management chrome, explicit in-app reader, persistence, offline reading, and landscape/portrait layouts.")
 
 
 if __name__ == "__main__":

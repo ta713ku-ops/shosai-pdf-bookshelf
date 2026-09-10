@@ -13,7 +13,7 @@ type GestureState = {
   lastX: number; lastTime: number; velocityX: number;
 };
 
-const CONTROLS_TIMEOUT_MS = 3600;
+const CONTROLS_TIMEOUT_MS = 4000;
 const TURN_SETTLE_MS = 190;
 
 function pointerDistance(points: Map<number, { x: number; y: number }>) {
@@ -63,6 +63,7 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
   const [dragging, setDragging] = useState(false);
   const [settling, setSettling] = useState(false);
   const readerRef = useRef<HTMLElement>(null);
+  const controlsRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const gesture = useRef<GestureState | null>(null);
@@ -80,7 +81,11 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
   const showControls = useCallback((autoHide = true) => {
     clearControlsTimer();
     setVisible(true);
-    if (autoHide) controlsTimer.current = window.setTimeout(() => setVisible(false), CONTROLS_TIMEOUT_MS);
+    if (autoHide) controlsTimer.current = window.setTimeout(() => {
+      const focused = document.activeElement;
+      if (focused instanceof Element && (controlsRef.current?.contains(focused) || focused.closest('.reader-toolbar'))) return;
+      setVisible(false);
+    }, CONTROLS_TIMEOUT_MS);
   }, [clearControlsTimer]);
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null;
@@ -150,7 +155,7 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
     const key = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !isDocumentFullscreen()) onClose();
       if ((event.target as HTMLElement).matches('input, select, textarea, button')) return;
-      if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') { event.preventDefault(); move((event.key === 'ArrowRight') === (book.direction === 'ltr') ? 1 : -1); }
+      if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') { event.preventDefault(); showControls(false); move((event.key === 'ArrowRight') === (book.direction === 'ltr') ? 1 : -1); }
       if (event.key === ' ') { event.preventDefault(); visible ? hideControls() : showControls(false); }
     };
     window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key);
@@ -160,7 +165,8 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
     else void requestAppFullscreen().then(setFullscreen);
   };
   return <section ref={readerRef} tabIndex={-1} role="dialog" aria-modal="true" className={`reader ${visible ? '' : 'reader-ui-hidden'}`} aria-label={`${book.title}を読む`}>
-    <header className="reader-toolbar" onPointerDownCapture={() => showControls()} onFocusCapture={() => showControls(false)}>
+    <button className="reader-accessibility-toggle" onFocus={() => showControls(false)} onClick={() => showControls(false)}>読書操作を表示</button>
+    <header className="reader-toolbar" onPointerDownCapture={() => showControls(false)} onFocusCapture={() => showControls(false)}>
       <button onClick={onClose} aria-label="本棚に戻る">← 本棚</button><h1>{book.title}</h1>
       {!standalone && (canRequestFullscreen() || fullscreen) && <button onClick={toggleFullscreen} aria-label={fullscreen ? '全画面を解除' : '全画面で表示'}>{fullscreen ? '全画面解除' : '全画面'}</button>}
       <button onClick={hideControls} aria-label="操作パネルを隠す">非表示</button>
@@ -235,10 +241,10 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
       setZoom(value => Math.min(2, Math.max(1, value - event.deltaY * .004)));
     }}>
       {error ? <div className="reader-state" role="alert"><h2>PDFを開けません</h2><p>{error}</p><button onClick={onClose}>本棚に戻る</button></div> : !pdf ? <p className="reader-state" role="status">本を開いています…</p> : <div className={`reader-pages ${dragging ? 'is-dragging' : ''} ${settling ? 'is-settling' : ''}`} style={{ flexDirection: book.direction === 'rtl' ? 'row-reverse' : 'row', '--reader-drag-x': `${dragOffset}px` } as React.CSSProperties}>
-        {pages.map(number => <PageCanvas key={number} pdf={pdf} number={number} width={Math.max(100, (size.width - 48) / (spread ? 2 : 1))} height={Math.max(100, size.height - 32)} zoom={zoom} />)}
+        {pages.map(number => <PageCanvas key={number} pdf={pdf} number={number} width={Math.max(100, (size.width - 18) / (spread ? 2 : 1))} height={Math.max(100, size.height - 16)} zoom={zoom} />)}
       </div>}
     </div>
-    <footer className="reader-controls" onPointerDownCapture={() => showControls()} onFocusCapture={() => showControls(false)}>
+    <footer ref={controlsRef} className="reader-controls" onPointerDownCapture={() => showControls(false)} onFocusCapture={() => showControls(false)}>
       <div className="reader-paging"><button disabled={pages[0] <= 1 || !pdf} onClick={() => move(-1)} aria-label="前のページ">前へ</button>
         <label className="reader-page-input"><span className="reader-sr">ページ番号</span><input aria-label="ページ番号" type="number" min={1} max={count} value={page} onChange={event => setPage(clampPage(Number(event.target.value), count))} /><span>/ {count}</span></label>
         <button disabled={pages[pages.length - 1] >= count || !pdf} onClick={() => move(1)} aria-label="次のページ">次へ</button></div>

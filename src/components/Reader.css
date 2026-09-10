@@ -4,9 +4,7 @@
   z-index: 50;
   overflow: hidden;
   color: #f4efe7;
-  background:
-    radial-gradient(circle at 50% 42%, rgba(99, 91, 78, .2), transparent 52%),
-    #171715;
+  background: #000;
 }
 
 .reader button,
@@ -61,6 +59,30 @@
   white-space: nowrap;
 }
 
+.reader-accessibility-toggle {
+  position: absolute;
+  z-index: 7;
+  top: 4px;
+  left: 4px;
+  width: 1px;
+  height: 1px;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.reader-accessibility-toggle:focus-visible {
+  width: auto;
+  height: 44px;
+  min-width: 44px !important;
+  min-height: 44px !important;
+  padding: 8px 14px !important;
+  overflow: visible;
+  clip-path: none;
+}
+
 .reader-controls {
   bottom: max(12px, env(safe-area-inset-bottom));
   justify-content: space-between;
@@ -82,8 +104,8 @@
   justify-content: center;
   min-width: min-content;
   margin: auto;
-  padding: 16px 24px;
-  gap: 2px;
+  padding: 8px;
+  gap: 1px;
   transform: translate3d(var(--reader-drag-x, 0), 0, 0);
 }
 
@@ -97,6 +119,10 @@
   background: #fff;
   box-shadow: 0 5px 32px rgba(0, 0, 0, .28);
 }
+
+.reader-pages .reader-page:first-child:last-child { box-shadow: 0 5px 32px rgba(0, 0, 0, .36); }
+.reader-pages .reader-page:first-child:not(:last-child) { box-shadow: -8px 6px 28px rgba(0, 0, 0, .36), inset -8px 0 10px rgba(0, 0, 0, .08); }
+.reader-pages .reader-page:last-child:not(:first-child) { box-shadow: 8px 6px 28px rgba(0, 0, 0, .36), inset 8px 0 10px rgba(0, 0, 0, .08); }
 
 .reader-page canvas { display: block; }
 .reader-page-message { position: absolute; inset: 0; display: grid; place-items: center; color: #59564e; font-size: 14px; }
