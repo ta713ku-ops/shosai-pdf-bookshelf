@@ -1,6 +1,6 @@
 /* Only the application shell belongs here. PDFs and library data stay in IndexedDB. */
 const CACHE_PREFIX = 'shosai-shell-'
-const CACHE_NAME = `${CACHE_PREFIX}v1`
+const CACHE_NAME = `${CACHE_PREFIX}v2`
 const BASE = new URL('./', self.registration.scope)
 const SHELL = new URL('index.html', BASE).href
 const SHELL_URLS = [SHELL, new URL('manifest.webmanifest', BASE).href, new URL('icon.svg', BASE).href, new URL('apple-touch-icon.png', BASE).href]
@@ -16,17 +16,21 @@ self.addEventListener('install', (event) => {
       .filter((url) => url.origin === BASE.origin && url.pathname.startsWith(`${BASE.pathname}assets/`) && !url.search && /\.(?:js|css)$/.test(url.pathname))
       .map((url) => url.href)
     await cache.addAll([...new Set(assets)])
-    // Vite emits PDF.js's worker as a hashed lazy asset referenced by the entry script.
-    // Discover and cache it during install so a stored book opens on the first offline visit.
-    const pdfWorkerAssets = []
-    for (const asset of assets.filter((url) => url.endsWith('.js'))) {
+    // Follow Vite's lazy imports as well. Reader, PDF.js and its worker must be
+    // ready before an existing local book is opened during the first offline visit.
+    const knownAssets = new Set(assets)
+    const pendingScripts = assets.filter((url) => url.endsWith('.js') || url.endsWith('.mjs'))
+    while (pendingScripts.length) {
+      const asset = pendingScripts.shift()
       const script = await (await cache.match(asset)).text()
-      for (const match of script.matchAll(/assets\/pdf\.worker(?:\.min)?-[\w-]+\.mjs/g)) {
-        const workerUrl = new URL(match[0], BASE)
-        if (workerUrl.origin === BASE.origin && workerUrl.pathname.startsWith(`${BASE.pathname}assets/`)) pdfWorkerAssets.push(workerUrl.href)
+      for (const match of script.matchAll(/["']([^"']+\.(?:js|mjs|css))["']/g)) {
+        const dependency = new URL(match[1], match[1].startsWith('assets/') ? BASE : asset)
+        if (dependency.origin !== BASE.origin || !dependency.pathname.startsWith(`${BASE.pathname}assets/`) || dependency.search || knownAssets.has(dependency.href)) continue
+        knownAssets.add(dependency.href)
+        await cache.add(dependency.href)
+        if (dependency.pathname.endsWith('.js') || dependency.pathname.endsWith('.mjs')) pendingScripts.push(dependency.href)
       }
     }
-    await cache.addAll([...new Set(pdfWorkerAssets)])
   })())
   // Let open readers finish before a new service worker takes over.
 })

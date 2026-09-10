@@ -53,10 +53,13 @@ def main() -> None:
         page.get_by_text("ここに最初の一冊を").wait_for()
         page.screenshot(path=output / "shosai-empty-landscape.png", full_page=True)
 
+        if page.get_by_role("button", name="PDFを追加").is_visible():
+            raise AssertionError("Library management controls should be hidden until the menu opens")
+        page.locator(".library-menu-trigger").click()
         page.get_by_role("button", name="＋ 本棚を追加").click()
         page.get_by_label("本棚の名前").fill("雑誌")
         page.get_by_role("button", name="追加", exact=True).click()
-        page.get_by_role("button", name="雑誌を削除").wait_for()
+        page.locator('.shelf-delete[aria-label="雑誌を削除"]').wait_for(state="attached")
 
         page.locator('input[type="file"]').set_input_files({
             "name": "friend-plan.pdf",
@@ -73,10 +76,13 @@ def main() -> None:
         page.screenshot(path=output / "shosai-library-landscape.png", full_page=True)
         page.get_by_role("button", name="friend-planを開く。1/1ページ").click()
         page.wait_for_function("document.fullscreenElement !== null", timeout=5_000)
-        page.get_by_role("region", name="friend-planを読む").wait_for(timeout=15_000)
-        page.get_by_role("button", name="全画面を解除").wait_for()
+        page.get_by_role("dialog", name="friend-planを読む").wait_for(timeout=15_000)
         page.get_by_role("img", name="1ページ").wait_for(timeout=15_000)
+        if page.locator(".reader").evaluate("element => !element.classList.contains('reader-ui-hidden')"):
+            raise AssertionError("Reader controls should start hidden")
         page.screenshot(path=output / "shosai-reader-landscape.png")
+        page.locator(".reader-stage").click(position={"x": 590, "y": 410})
+        page.get_by_role("button", name="全画面を解除").wait_for()
         page.get_by_role("button", name="本棚に戻る").click()
         page.wait_for_function("document.fullscreenElement === null", timeout=5_000)
 
@@ -84,11 +90,13 @@ def main() -> None:
         page.get_by_role("button", name="friend-planを開く。1/1ページ").wait_for(timeout=10_000)
         page.set_viewport_size({"width": 820, "height": 1180})
         page.wait_for_timeout(300)
+        page.locator(".library-menu-trigger").click()
         shelf_delete = page.get_by_role("button", name="雑誌を削除")
         shelf_delete.wait_for()
         shelf_delete_style = shelf_delete.evaluate("element => ({ display: getComputedStyle(element).display, opacity: Number(getComputedStyle(element).opacity) })")
         if shelf_delete_style["display"] == "none" or shelf_delete_style["opacity"] < 0.5:
             raise AssertionError(f"Shelf delete control is not visible for touch portrait: {shelf_delete_style!r}")
+        page.get_by_role("button", name="メニューを閉じる").click()
         page.screenshot(path=output / "shosai-library-portrait.png", full_page=True)
         context.set_offline(True)
         page.reload(wait_until="domcontentloaded")

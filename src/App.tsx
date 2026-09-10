@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Reader, type ReaderBook } from './components/Reader'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import type { ReaderBook } from './components/Reader'
 import {
   deleteBook,
   deleteShelf,
@@ -11,10 +11,11 @@ import {
   updateBook,
 } from './data/libraryDb'
 import type { BookRecord, BookUpdate, ShelfRecord } from './domain/books'
-import { inspectPdf } from './lib/pdf'
 import { exitAppFullscreen, requestAppFullscreen } from './lib/fullscreen'
 
 type ShelfFilter = 'all' | 'unfiled' | string
+
+const Reader = lazy(() => import('./components/Reader').then((module) => ({ default: module.Reader })))
 
 interface ActiveBook extends ReaderBook {
   record: BookRecord
@@ -63,6 +64,7 @@ export function App() {
   const [newShelfName, setNewShelfName] = useState('')
   const [addingShelf, setAddingShelf] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+  const libraryMenu = useRef<HTMLDialogElement>(null)
   const importInFlight = useRef(false)
 
   const refresh = async () => {
@@ -123,6 +125,7 @@ export function App() {
     let skipped = 0
     const failures: string[] = []
     try {
+      const { inspectPdf } = await import('./lib/pdf')
       if ('storage' in navigator && 'persist' in navigator.storage) void navigator.storage.persist().catch(() => {})
       const savedBooks = await listBooks()
       const knownFiles = new Set(savedBooks.map((book) => `${book.fileName}\u0000${book.fileSize}`))
@@ -237,6 +240,7 @@ export function App() {
       setFilter(shelf.id)
       setNewShelfName('')
       setAddingShelf(false)
+      libraryMenu.current?.close()
     } catch (reason) {
       setError(errorMessage(reason))
     }
@@ -264,10 +268,26 @@ export function App() {
 
   return (
     <main className="app-shell">
-      <aside className="library-sidebar" aria-label="本棚一覧">
+      <div inert={activeBook ? true : undefined} aria-hidden={activeBook ? true : undefined}>
+      <button className="library-menu-trigger" aria-haspopup="dialog" aria-controls="library-menu" onClick={() => libraryMenu.current?.showModal()}>
+        <span>{selectedShelfName}</span><span className="library-menu-hint">{query ? '検索中 · ' : ''}メニュー</span>
+      </button>
+      <input ref={fileInput} hidden type="file" accept="application/pdf,.pdf" multiple onChange={(event) => void importFiles(event.target.files)} />
+      <dialog ref={libraryMenu} id="library-menu" className="library-sidebar" aria-labelledby="library-menu-title" onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          const rect = event.currentTarget.getBoundingClientRect()
+          if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) event.currentTarget.close()
+        }
+      }}>
         <div className="brand-block">
           <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span>
-          <div><p className="brand-kicker">PDF LIBRARY</p><h1>書斎</h1></div>
+          <div><p className="brand-kicker">PDF LIBRARY</p><h1 id="library-menu-title">書斎</h1></div>
+          <button className="library-menu-close" aria-label="メニューを閉じる" onClick={() => libraryMenu.current?.close()}>×</button>
+        </div>
+        <div className="header-actions">
+          <label className="search-field"><span className="sr-only">本を検索</span><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="本を検索" /></label>
+          {query && <button className="search-clear" onClick={() => setQuery('')}>検索を解除</button>}
+          <button className="import-button" disabled={importing} onClick={() => { libraryMenu.current?.close(); fileInput.current?.click() }}>{importing ? '表紙を準備中…' : 'PDFを追加'}</button>
         </div>
         <nav className="shelf-nav" aria-label="表示する本棚">
           <button className={filter === 'all' ? 'selected' : ''} onClick={() => setFilter('all')}><span>すべての本</span><strong>{books.length}</strong></button>
@@ -275,7 +295,7 @@ export function App() {
           {shelves.map((shelf) => (
             <div className="shelf-nav-row" key={shelf.id}>
               <button className={filter === shelf.id ? 'selected' : ''} onClick={() => setFilter(shelf.id)}><span>{shelf.name}</span><strong>{books.filter((book) => book.shelfId === shelf.id).length}</strong></button>
-              <button className="shelf-delete" aria-label={`${shelf.name}を削除`} onClick={() => void removeShelf(shelf)}>×</button>
+              <button className="shelf-delete" aria-label={`${shelf.name}を削除`} onClick={() => void removeShelf(shelf).catch((reason) => setError(errorMessage(reason)))}>×</button>
             </div>
           ))}
         </nav>
@@ -286,21 +306,19 @@ export function App() {
             <div><button type="button" onClick={() => setAddingShelf(false)}>取消</button><button className="primary" type="submit">追加</button></div>
           </form>
         ) : <button className="add-shelf" onClick={() => setAddingShelf(true)}>＋ 本棚を追加</button>}
-        <p className="privacy-note"><span aria-hidden="true">●</span> PDFはこの端末だけに保存</p>
-      </aside>
+        <button className="show-library" onClick={() => libraryMenu.current?.close()}>{query ? `検索結果を見る · ${visibleBooks.length}冊` : `${selectedShelfName}を見る · ${visibleBooks.length}冊`}</button>
+        {error && <p className="menu-error" role="alert">{error}</p>}
+        <p className="privacy-note">PDFはこの端末だけに保存</p>
+      </dialog>
 
       <section className="library-main">
-        <header className="library-header">
-          <div><p className="section-kicker">MY COLLECTION</p><h2>{selectedShelfName}</h2></div>
-          <div className="header-actions">
-            <label className="search-field"><span className="sr-only">本を検索</span><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="本を検索" /></label>
-            <input ref={fileInput} hidden type="file" accept="application/pdf,.pdf" multiple onChange={(event) => void importFiles(event.target.files)} />
-            <button className="import-button" disabled={importing} onClick={() => fileInput.current?.click()}>{importing ? '表紙を準備中…' : 'PDFを追加'}</button>
-          </div>
-        </header>
+        <h2 className="sr-only">{selectedShelfName}</h2>
+        {importing && <div className="import-status" role="status">表紙を準備中…</div>}
 
-        {error && <div className="message error-message" role="alert"><span>{error}</span><button aria-label="エラーを閉じる" onClick={() => setError('')}>×</button></div>}
-        {notice && <div className="message notice-message" role="status">{notice}</div>}
+        <div className="library-feedback">
+          {error && <div className="message error-message" role="alert"><span>{error}</span><button aria-label="エラーを閉じる" onClick={() => setError('')}>×</button></div>}
+          {notice && <div className="message notice-message" role="status">{notice}</div>}
+        </div>
 
         <div className="bookshelf" aria-busy={loading || importing}>
           {loading ? (
@@ -337,9 +355,12 @@ export function App() {
         } catch (reason) { setError(errorMessage(reason)) }
       }} />}
 
-      {activeBook && <Reader key={activeBook.id} book={activeBook} onClose={closeReader} onProgress={(page) => {
-        if (page !== activeBook.record.currentPage) void saveReadingState(activeBook.id, { currentPage: page })
-      }} onDirectionChange={(direction) => void saveReadingState(activeBook.id, { direction })} />}
+      </div>
+      {activeBook && <Suspense fallback={<section className="reader-loading" role="dialog" aria-modal="true" aria-label={`${activeBook.title}を開いています`}>本を開いています…</section>}>
+        <Reader key={activeBook.id} book={activeBook} onClose={closeReader} onProgress={(page) => {
+          if (page !== activeBook.record.currentPage) void saveReadingState(activeBook.id, { currentPage: page })
+        }} onDirectionChange={(direction) => void saveReadingState(activeBook.id, { direction })} />
+      </Suspense>}
       {activeBook && readerSaveError && <div className="message error-message" role="alert" style={{ position: 'fixed', top: 'max(72px, env(safe-area-inset-top))', left: '5%', right: '5%', zIndex: 1000 }}><span>{readerSaveError}</span><button aria-label="保存エラーを閉じる" onClick={() => setReaderSaveError('')}>×</button></div>}
     </main>
   )
