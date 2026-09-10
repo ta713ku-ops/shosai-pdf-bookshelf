@@ -27,7 +27,13 @@ self.addEventListener('install', (event) => {
         const dependency = new URL(match[1], match[1].startsWith('assets/') ? BASE : asset)
         if (dependency.origin !== BASE.origin || !dependency.pathname.startsWith(`${BASE.pathname}assets/`) || dependency.search || knownAssets.has(dependency.href)) continue
         knownAssets.add(dependency.href)
-        await cache.add(dependency.href)
+        // Bundled libraries can retain source-level filenames alongside Vite's
+        // emitted URL. A missing source filename must not abort installation.
+        try {
+          await cache.add(dependency.href)
+        } catch {
+          continue
+        }
         if (dependency.pathname.endsWith('.js') || dependency.pathname.endsWith('.mjs')) pendingScripts.push(dependency.href)
       }
     }

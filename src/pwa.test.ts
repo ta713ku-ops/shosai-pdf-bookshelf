@@ -48,6 +48,33 @@ describe('service worker request boundaries', () => {
     expect(cache.add).toHaveBeenCalledWith('https://example.test/books/assets/pdf.worker-d.mjs')
   })
 
+  it('ignores source-only dependency names without aborting installation', async () => {
+    const handlers = new Map<string, (event: unknown) => void>()
+    const sources = new Map([
+      ['https://example.test/books/index.html', '<script src="/books/assets/index-a.js"></script>'],
+      ['https://example.test/books/assets/index-a.js', 'import("./pdf-c.js")'],
+      ['https://example.test/books/assets/pdf-c.js', 'const source="./pdf.worker.mjs"; new URL("/books/assets/pdf.worker-d.mjs", import.meta.url)'],
+      ['https://example.test/books/assets/pdf.worker-d.mjs', 'self.onmessage=()=>{}'],
+    ])
+    const cache = {
+      addAll: vi.fn().mockResolvedValue(undefined),
+      add: vi.fn(async (url: string) => {
+        if (!sources.has(url)) throw new Error('404')
+      }),
+      match: vi.fn(async (url: string) => new Response(sources.get(url) ?? '')),
+    }
+    const worker = {
+      registration: { scope: 'https://example.test/books/' },
+      addEventListener: (name: string, handler: (event: unknown) => void) => handlers.set(name, handler),
+    }
+    new Function('self', 'caches', workerSource)(worker, { open: vi.fn().mockResolvedValue(cache) })
+    let installation: Promise<void> | undefined
+    handlers.get('install')!({ waitUntil: (value: Promise<void>) => { installation = value } })
+    await expect(installation).resolves.toBeUndefined()
+    expect(cache.add).toHaveBeenCalledWith('https://example.test/books/assets/pdf.worker.mjs')
+    expect(cache.add).toHaveBeenCalledWith('https://example.test/books/assets/pdf.worker-d.mjs')
+  })
+
   it('uses a cached shell on network failure and deletes only its own obsolete caches', async () => {
     const handlers = new Map<string, (event: unknown) => void>()
     const cachedShell = new Response('<html>書斎</html>')
