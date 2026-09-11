@@ -68,13 +68,13 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`
 }
 
-function BookTile({ book, coverUrl, organizing, onOpen, onEdit }: {
+function BookTile({ book, organizing, onOpen, onEdit }: {
   book: BookRecord
-  coverUrl?: string
   organizing: boolean
   onOpen: () => void
   onEdit: () => void
 }) {
+  const [coverUrl, setCoverUrl] = useState('')
   const longPress = useRef<{ timer: number | null; startX: number; startY: number; triggered: boolean }>({
     timer: null,
     startX: 0,
@@ -91,6 +91,15 @@ function BookTile({ book, coverUrl, organizing, onOpen, onEdit }: {
   }
   const percent = Math.round((book.currentPage / Math.max(1, book.pageCount)) * 100)
   useEffect(() => clearLongPress, [])
+  useEffect(() => {
+    if (!book.cover) {
+      setCoverUrl('')
+      return
+    }
+    const url = URL.createObjectURL(book.cover)
+    setCoverUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [book.cover])
   return <article className={`book-card ${organizing ? 'is-organizing' : ''}`}>
     <button
       className="book-cover"
@@ -189,16 +198,6 @@ export function App() {
     const timer = window.setTimeout(() => setNotice(''), 4200)
     return () => window.clearTimeout(timer)
   }, [notice])
-
-  const coverUrls = useMemo(() => {
-    const urls = new Map<string, string>()
-    books.forEach((book) => {
-      if (book.cover) urls.set(book.id, URL.createObjectURL(book.cover))
-    })
-    return urls
-  }, [books])
-
-  useEffect(() => () => coverUrls.forEach((url) => URL.revokeObjectURL(url)), [coverUrls])
 
   const visibleBooks = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase('ja')
@@ -327,7 +326,7 @@ export function App() {
       const now = new Date().toISOString()
       const updated = await updateBook(book.id, { lastOpenedAt: now })
       const record = updated ?? book
-      setBooks((current) => current.map((item) => item.id === record.id ? record : item))
+      setBooks((current) => current.map((item) => item.id === record.id ? { ...record, cover: item.cover } : item))
       setActiveBook({
         id: record.id,
         title: record.title,
@@ -350,7 +349,9 @@ export function App() {
   const applyUpdate = async (id: string, patch: BookUpdate) => {
     const updated = await updateBook(id, patch)
     if (!updated) return
-    setBooks((current) => current.map((book) => book.id === id ? updated : book))
+    setBooks((current) => current.map((book) => book.id === id
+      ? ('cover' in patch ? updated : { ...updated, cover: book.cover })
+      : book))
     setActiveBook((current) => current?.id === id ? {
       ...current,
       title: updated.title,
@@ -511,7 +512,7 @@ export function App() {
               <div className="shelf-track" style={{ transform: `translate3d(calc(${-currentShelfPage * 100}% + ${shelfDragX}px), 0, 0)` }}>
                 {shelfPages.map((pageBooks, pageIndex) => <section className="shelf-page" key={pageIndex} aria-label={`棚ページ${pageIndex + 1}`} aria-hidden={pageIndex !== currentShelfPage} inert={pageIndex !== currentShelfPage ? true : undefined}>
                   <div className="book-grid">
-                    {pageBooks.map((book) => <BookTile key={book.id} book={book} coverUrl={coverUrls.get(book.id)} organizing={organizing} onOpen={() => {
+                    {pageBooks.map((book) => <BookTile key={book.id} book={book} organizing={organizing} onOpen={() => {
                       if (performance.now() >= suppressBookOpenUntil.current) void openBook(book)
                     }} onEdit={() => setEditingBook(book)} />)}
                   </div>

@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({ listBooks: vi.fn(), listShelves: vi.fn(), save
 vi.mock('./data/libraryDb', () => ({ ...mocks, deleteBook: vi.fn(), deleteShelf: vi.fn(), saveShelf: vi.fn() }))
 vi.mock('./lib/pdf', () => ({ inspectPdf: mocks.inspectPdf }))
 vi.mock('./lib/fullscreen', () => ({ requestAppFullscreen: vi.fn(), exitAppFullscreen: vi.fn() }))
-vi.mock('./components/Reader', () => ({ Reader: ({ onProgress, onDirectionChange }: { onProgress: (page: number) => void; onDirectionChange: (direction: string) => void }) => <section aria-label="テストリーダー"><button onClick={() => onProgress(2)}>次のページ</button><button onClick={() => onDirectionChange('ltr')}>開き方変更</button></section> }))
+vi.mock('./components/Reader', () => ({ Reader: ({ onProgress, onDirectionChange, onClose }: { onProgress: (page: number) => void; onDirectionChange: (direction: string) => void; onClose: () => void }) => <section aria-label="テストリーダー"><button onClick={() => onProgress(2)}>次のページ</button><button onClick={() => onDirectionChange('ltr')}>開き方変更</button><button onClick={onClose}>本棚に戻る</button></section> }))
 import { App } from './App'
 
 const book: BookRecord = { id: 'one', title: '既存の本', author: '', fileName: 'existing.pdf', fileSize: 1, pageCount: 5, currentPage: 1, shelfId: null, addedAt: '2026-09-09', updatedAt: '2026-09-09', lastOpenedAt: null, direction: 'rtl' }
@@ -50,5 +50,32 @@ describe('取り込みと読書状態の保存', () => {
     fireEvent.click(await screen.findByRole('button', { name: action }))
     expect(await screen.findByRole('alert')).toHaveTextContent('読書位置・開き方を保存できませんでした')
     expect(screen.getByRole('region', { name: 'テストリーダー' })).toBeInTheDocument()
+  })
+
+  it('読書位置を保存して本棚へ戻っても表紙URLを維持する', async () => {
+    const originalCover = new Blob(['original-cover'], { type: 'image/png' })
+    const coveredBook = { ...book, cover: originalCover }
+    saved = [coveredBook]
+    const createObjectURL = vi.fn(() => 'blob:stable-cover')
+    const revokeObjectURL = vi.fn()
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL })
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectURL })
+    mocks.updateBook.mockImplementation(async (_id: string, patch: Partial<BookRecord>) => ({
+      ...coveredBook,
+      ...patch,
+      cover: new Blob(['indexed-db-clone'], { type: 'image/png' }),
+    }))
+
+    render(<App />)
+    const open = await screen.findByRole('button', { name: '既存の本を開く。1/5ページ' })
+    await waitFor(() => expect(open.querySelector('img')).toHaveAttribute('src', 'blob:stable-cover'))
+    fireEvent.click(open)
+    fireEvent.click(await screen.findByRole('button', { name: '次のページ' }))
+    fireEvent.click(screen.getByRole('button', { name: '本棚に戻る' }))
+
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'テストリーダー' })).not.toBeInTheDocument())
+    expect(screen.getByRole('button', { name: '既存の本を開く。2/5ページ' }).querySelector('img')).toHaveAttribute('src', 'blob:stable-cover')
+    expect(createObjectURL).toHaveBeenCalledTimes(1)
+    expect(revokeObjectURL).not.toHaveBeenCalled()
   })
 })

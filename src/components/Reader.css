@@ -199,11 +199,11 @@
 }
 
 .reader-turn-layer.is-settling .reader-turn-sheet {
-  transition: transform 720ms cubic-bezier(.18, .66, .16, 1), border-radius 720ms ease;
+  transition: transform var(--reader-turn-duration, 1200ms) cubic-bezier(.32, .06, .18, 1), border-radius var(--reader-turn-duration, 1200ms) ease;
 }
 
 .reader-turn-layer.is-settling .reader-turn-cast-shadow {
-  transition: opacity 720ms ease, filter 720ms ease, transform 720ms cubic-bezier(.18, .66, .16, 1);
+  transition: opacity var(--reader-turn-duration, 1200ms) ease, filter var(--reader-turn-duration, 1200ms) ease, transform var(--reader-turn-duration, 1200ms) cubic-bezier(.32, .06, .18, 1);
 }
 
 .reader-turn-face {

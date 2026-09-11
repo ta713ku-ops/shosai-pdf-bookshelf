@@ -21,7 +21,7 @@ type TurnState = {
 };
 
 const CONTROLS_TIMEOUT_MS = 4000;
-const TURN_SETTLE_MS = 720;
+const TURN_SETTLE_MS = 1200;
 const MAX_CACHED_PAGES = 8;
 
 type CachedPage = { canvas: HTMLCanvasElement; cssWidth: number; cssHeight: number };
@@ -100,13 +100,22 @@ function PageCurl({ pdf, page, count, spread, direction, turn, width, height, zo
 }) {
   const currentPages = spreadPages(page, count, spread);
   const targetPages = spreadPages(turnPage(page, count, spread, turn.delta), count, spread);
-  const side = ((turn.delta > 0) === (direction === 'ltr')) ? 'right' : 'left';
-  const currentEdge = currentPages[currentPages.length - 1];
-  const targetNear = targetPages[0];
-  const frontPage = turn.delta > 0 ? currentEdge : targetNear;
-  const backPage = turn.delta > 0 ? targetNear : currentEdge;
-  const underPage = turn.delta > 0 ? targetPages[targetPages.length - 1] : currentPages[0];
-  const travel = turn.delta > 0 ? turn.progress : 1 - turn.progress;
+  // A portrait page always turns around the same binding edge. In a spread,
+  // both leaves turn around the center gutter, so the active half changes.
+  const side = spread
+    ? (((turn.delta > 0) === (direction === 'ltr')) ? 'right' : 'left')
+    : (direction === 'ltr' ? 'right' : 'left');
+  const isIncomingSinglePage = !spread && turn.delta < 0;
+  const frontPage = isIncomingSinglePage
+    ? targetPages[0]
+    : (turn.delta > 0 ? currentPages[currentPages.length - 1] : currentPages[0]);
+  const backPage = isIncomingSinglePage
+    ? currentPages[0]
+    : (turn.delta > 0 ? targetPages[0] : targetPages[targetPages.length - 1]);
+  const underPage = isIncomingSinglePage
+    ? currentPages[0]
+    : (turn.delta > 0 ? targetPages[targetPages.length - 1] : targetPages[0]);
+  const travel = isIncomingSinglePage ? 1 - turn.progress : turn.progress;
   const turnSign = side === 'right' ? -1 : 1;
   const curve = Math.sin(Math.PI * turn.progress);
   const style = {
@@ -115,11 +124,13 @@ function PageCurl({ pdf, page, count, spread, direction, turn, width, height, zo
     '--reader-curl-curve': curve,
     '--reader-curl-touch-y': `${turn.touchY * 100}%`,
     '--reader-curl-lift': `${(turn.touchY - .5) * curve * 5.5}deg`,
+    '--reader-turn-duration': `${TURN_SETTLE_MS}ms`,
   } as React.CSSProperties;
 
   return <div
-    className={`reader-turn-layer ${spread && currentPages.length > 1 ? 'is-spread' : 'is-single'} is-${side} is-${turn.delta > 0 ? 'forward' : 'backward'} is-${turn.phase}`}
+    className={`reader-turn-layer ${spread ? 'is-spread' : 'is-single'} is-${side} is-${turn.delta > 0 ? 'forward' : 'backward'} is-${turn.phase}`}
     data-turn-side={side}
+    data-turn-axis={side === 'right' ? 'left' : 'right'}
     data-turn-direction={turn.delta > 0 ? 'forward' : 'backward'}
     aria-hidden="true"
     style={style}

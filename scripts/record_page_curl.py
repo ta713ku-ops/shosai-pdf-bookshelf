@@ -61,7 +61,7 @@ def capture_browser_frames() -> None:
             raise AssertionError(f"Page curl did not follow the pointer: {progresses}")
 
         page.mouse.up()
-        for _ in range(11):
+        for _ in range(19):
             page.wait_for_timeout(66)
             capture()
         page.locator('.reader-pages[data-visible-pages="3,4"]').wait_for(timeout=5_000)
@@ -76,7 +76,20 @@ def capture_browser_frames() -> None:
         page.mouse.move(430, 500, steps=10)
         reverse = page.locator('.reader-turn-layer[data-turn-direction="backward"][data-turn-side="right"]')
         reverse.wait_for(timeout=5_000)
+        if reverse.locator('.reader-turn-front canvas[aria-label="3ページ"]').count() != 1:
+            raise AssertionError("The landscape backward curl did not lift the current gutter page")
+        if reverse.locator('.reader-turn-back canvas[aria-label="2ページ"]').count() != 1:
+            raise AssertionError("The landscape backward curl did not expose the previous page on its reverse")
+        if reverse.locator('.reader-turn-underlay canvas[aria-label="1ページ"]').count() != 1:
+            raise AssertionError("The landscape backward curl used the wrong under-page")
         page.mouse.up()
+        page.wait_for_timeout(450)
+        if not reverse.is_visible():
+            raise AssertionError("The backward curl disappeared before its paper motion could be seen")
+        reverse_angle = reverse.locator(".reader-turn-sheet").evaluate("element => getComputedStyle(element).transform")
+        if reverse_angle == "none":
+            raise AssertionError("The backward curl did not apply a visible reverse transform")
+        page.wait_for_timeout(850)
         page.locator('.reader-pages[data-visible-pages="1,2"]').wait_for(timeout=5_000)
         if page.locator(".reader-page-message:visible").count():
             raise AssertionError("A loading placeholder remained after returning to the previous spread")
@@ -100,7 +113,7 @@ def capture_browser_frames() -> None:
         page.locator('.reader-pages[data-visible-pages="1,2"]').wait_for(timeout=5_000)
         for _ in range(6):
             page.mouse.click(1080, 410)
-        page.wait_for_timeout(900)
+        page.wait_for_timeout(1400)
         visible_pages = page.locator(".reader-pages").get_attribute("data-visible-pages")
         if visible_pages != "3,4" or page.locator(".reader-turn-layer").count():
             raise AssertionError(f"Rapid taps stranded the page turn: visible={visible_pages!r}")
@@ -108,12 +121,38 @@ def capture_browser_frames() -> None:
         for expected, x in (("5,6", 1080), ("3,4", 100), ("1,2", 100)):
             for _ in range(12):
                 page.mouse.click(x, 410)
-            page.wait_for_timeout(900)
+            page.wait_for_timeout(1400)
             visible_pages = page.locator(".reader-pages").get_attribute("data-visible-pages")
             if visible_pages != expected or page.locator(".reader-turn-layer").count():
                 raise AssertionError(f"Rapid-tap stress turn failed: expected={expected!r} visible={visible_pages!r}")
             if page.locator(".reader-page-message:visible").count():
                 raise AssertionError(f"Loading remained after rapid-tap stress turn to {expected}")
+
+        # Portrait forward and backward turns must share one physical binding axis.
+        page.set_viewport_size({"width": 820, "height": 1180})
+        page.wait_for_timeout(300)
+        page.locator(".reader-stage").click(position={"x": 410, "y": 590})
+        page.get_by_label("ページ番号").fill("2")
+        page.get_by_role("button", name="操作パネルを隠す").click()
+        page.locator('.reader-pages[data-visible-pages="2"]').wait_for(timeout=5_000)
+
+        page.mouse.move(700, 590)
+        page.mouse.down()
+        page.mouse.move(620, 590, steps=4)
+        portrait_forward = page.locator('.reader-turn-layer[data-turn-direction="forward"][data-turn-axis="left"].is-single')
+        portrait_forward.wait_for(timeout=5_000)
+        page.mouse.up()
+        page.wait_for_timeout(1300)
+
+        page.mouse.move(120, 590)
+        page.mouse.down()
+        page.mouse.move(200, 590, steps=4)
+        portrait_backward = page.locator('.reader-turn-layer[data-turn-direction="backward"][data-turn-axis="left"].is-single')
+        portrait_backward.wait_for(timeout=5_000)
+        page.mouse.up()
+        page.wait_for_timeout(1300)
+        if page.locator('.reader-pages').get_attribute('data-visible-pages') != '2':
+            raise AssertionError("Cancelled portrait axis checks changed the current page")
         browser.close()
 
     if errors:
