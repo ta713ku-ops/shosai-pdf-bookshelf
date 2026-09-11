@@ -79,7 +79,7 @@ describe('service worker request boundaries', () => {
     const handlers = new Map<string, (event: unknown) => void>()
     const cachedShell = new Response('<html>書斎</html>')
     const cache = { match: vi.fn().mockResolvedValue(cachedShell) }
-    const storage = { open: vi.fn().mockResolvedValue(cache), keys: vi.fn().mockResolvedValue(['shosai-shell-v0', 'shosai-shell-v1', 'shosai-shell-v2', 'another-app']), delete: vi.fn().mockResolvedValue(true) }
+    const storage = { open: vi.fn().mockResolvedValue(cache), keys: vi.fn().mockResolvedValue(['shosai-shell-v0', 'shosai-shell-v1', 'shosai-shell-v2', 'shosai-shell-v3', 'another-app']), delete: vi.fn().mockResolvedValue(true) }
     const claim = vi.fn()
     const worker = { registration: { scope: 'https://example.test/books/' }, clients: { claim }, addEventListener: (name: string, handler: (event: unknown) => void) => handlers.set(name, handler) }
     new Function('self', 'caches', 'fetch', workerSource)(worker, storage, vi.fn().mockRejectedValue(new Error('offline')))
@@ -89,9 +89,10 @@ describe('service worker request boundaries', () => {
     let activation: Promise<void> | undefined
     handlers.get('activate')!({ waitUntil: (value: Promise<void>) => { activation = value } })
     await activation
-    expect(storage.delete).toHaveBeenCalledTimes(2)
+    expect(storage.delete).toHaveBeenCalledTimes(3)
     expect(storage.delete).toHaveBeenCalledWith('shosai-shell-v0')
     expect(storage.delete).toHaveBeenCalledWith('shosai-shell-v1')
+    expect(storage.delete).toHaveBeenCalledWith('shosai-shell-v2')
     expect(claim).toHaveBeenCalledOnce()
   })
   it('does not intercept PDFs, external files, API data, or query-bearing URLs', () => {

@@ -145,9 +145,36 @@ describe('Reader immersive controls and gestures', () => {
     expect(backward).toHaveAttribute('data-turn-direction', 'backward');
     expect(backward).toHaveAttribute('data-turn-axis', 'left');
     expect(backward).toHaveClass('is-single');
+    expect(backward).toHaveClass('is-portrait-backward');
+    const backwardAngle = parseFloat((backward as HTMLElement).style.getPropertyValue('--reader-curl-angle'));
+    expect(Math.abs(backwardAngle)).toBeGreaterThan(0);
+    expect(Math.abs(backwardAngle)).toBeLessThan(82);
     expect(backward?.querySelector('.reader-turn-front canvas[aria-label="2ページ"]')).toBeInTheDocument();
     expect(backward?.querySelector('.reader-turn-back canvas[aria-label="1ページ"]')).toBeInTheDocument();
     expect(backward?.querySelector('.reader-turn-underlay canvas[aria-label="1ページ"]')).toBeInTheDocument();
+  });
+
+  it('turns one cover leaf without rendering a duplicate underneath in landscape', async () => {
+    const onProgress = vi.fn();
+    render(<Reader book={{ ...book, progress: 2, direction: 'rtl' }} onClose={vi.fn()} onProgress={onProgress} onDirectionChange={vi.fn()} />);
+    await waitFor(() => expect(screen.queryByText('本を開いています…')).not.toBeInTheDocument());
+    const stage = screen.getByRole('dialog').querySelector('.reader-stage') as HTMLElement;
+
+    fireEvent.pointerDown(stage, { pointerId: 1, clientX: 780, clientY: 430 });
+    fireEvent.pointerMove(stage, { pointerId: 1, clientX: 560, clientY: 430 });
+    fireEvent.pointerUp(stage, { pointerId: 1, clientX: 390, clientY: 430 });
+
+    const curl = stage.querySelector('.reader-turn-layer');
+    expect(curl).toHaveClass('is-target-cover');
+    expect(curl?.querySelector('.reader-turn-back canvas[aria-label="1ページ"]')).toBeInTheDocument();
+    expect(curl?.querySelector('.reader-turn-underlay canvas')).not.toBeInTheDocument();
+    expect(curl?.querySelectorAll('canvas[aria-label="1ページ"]')).toHaveLength(1);
+
+    act(() => vi.advanceTimersByTime(1200));
+    await waitFor(() => expect(onProgress).toHaveBeenLastCalledWith(1));
+    const pages = stage.querySelector('.reader-pages') as HTMLElement;
+    expect(pages).toHaveAttribute('data-visible-pages', '1');
+    expect(pages.querySelectorAll(':scope > .reader-page')).toHaveLength(1);
   });
 
   it('curls the current sheet back across the book when returning to the previous spread', async () => {

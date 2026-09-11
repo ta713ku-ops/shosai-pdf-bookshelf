@@ -83,8 +83,10 @@ def capture_browser_frames() -> None:
             raise AssertionError("The landscape backward curl did not lift the current gutter page")
         if reverse.locator('.reader-turn-back canvas[aria-label="1ページ"]').count() != 1:
             raise AssertionError("The landscape backward curl did not expose the previous page on its reverse")
-        if reverse.locator('.reader-turn-underlay canvas[aria-label="1ページ"]').count() != 1:
-            raise AssertionError("The landscape backward curl used the wrong under-page")
+        if reverse.locator('.reader-turn-underlay canvas').count():
+            raise AssertionError("The landscape cover curl rendered a duplicate page underneath")
+        if reverse.locator('canvas[aria-label="1ページ"]').count() != 1:
+            raise AssertionError("The landscape cover curl must contain exactly one cover leaf")
         page.mouse.up()
         page.wait_for_timeout(450)
         if not reverse.is_visible():
@@ -94,6 +96,10 @@ def capture_browser_frames() -> None:
             raise AssertionError("The backward curl did not apply a visible reverse transform")
         page.wait_for_timeout(850)
         page.locator('.reader-pages[data-visible-pages="1"]').wait_for(timeout=5_000)
+        if page.locator('.reader-pages[data-visible-pages="1"] > .reader-page').count() != 1:
+            raise AssertionError("Returning to the landscape cover left more than one visible page")
+        if page.get_by_role("img", name="2ページ").count():
+            raise AssertionError("A body page remained visible beside the landscape cover")
         if page.locator(".reader-page-message:visible").count():
             raise AssertionError("A loading placeholder remained after returning to the previous spread")
 
@@ -163,16 +169,35 @@ def capture_browser_frames() -> None:
           window.__portraitTurnFrames = [];
           const started = performance.now();
           const sample = () => {
-            window.__portraitTurnFrames.push(document.querySelectorAll('.reader-turn-layer .reader-page-message').length);
-            if (performance.now() - started < 160) requestAnimationFrame(sample);
+            const layer = document.querySelector('.reader-turn-layer');
+            const sheet = layer?.querySelector('.reader-turn-sheet');
+            const style = sheet ? getComputedStyle(sheet) : null;
+            window.__portraitTurnFrames.push({
+              elapsed: performance.now() - started,
+              hasTurn: Boolean(layer),
+              messageCount: document.querySelectorAll('.reader-turn-layer .reader-page-message').length,
+              width: sheet?.getBoundingClientRect().width ?? 0,
+              opacity: style ? Number(style.opacity) : 0,
+              transform: style?.transform ?? 'none',
+            });
+            if (performance.now() - started < 1340) requestAnimationFrame(sample);
           };
           requestAnimationFrame(sample);
         }""")
         page.mouse.click(25, 590)
-        page.wait_for_timeout(180)
-        if any(page.evaluate("window.__portraitTurnFrames")):
+        page.wait_for_timeout(1380)
+        portrait_frames = page.evaluate("window.__portraitTurnFrames")
+        if any(frame["messageCount"] for frame in portrait_frames):
             raise AssertionError("Portrait backward turn inserted a transient loading frame")
-        page.wait_for_timeout(1250)
+        active_frames = [frame for frame in portrait_frames if frame["hasTurn"]]
+        if len(active_frames) < 30:
+            raise AssertionError(f"Portrait backward animation disappeared too early: {len(active_frames)} frames")
+        transforms = {frame["transform"] for frame in active_frames if frame["transform"] != "none"}
+        if len(transforms) < 8:
+            raise AssertionError("Portrait backward animation did not visibly progress")
+        visible_frames = [frame for frame in active_frames if frame["opacity"] >= .2]
+        if not visible_frames or min(frame["width"] for frame in visible_frames) < 180:
+            raise AssertionError("Portrait backward page collapsed before its fade completed")
         page.locator('.reader-pages[data-visible-pages="1"]').wait_for(timeout=5_000)
         browser.close()
 
