@@ -92,6 +92,28 @@ def capture_browser_frames() -> None:
         mirrored.wait_for(timeout=5_000)
         page.mouse.up()
         page.locator('.reader-pages[data-visible-pages="3,4"]').wait_for(timeout=5_000)
+
+        # Rapid taps during the settling animation must not cancel or strand it.
+        page.locator(".reader-stage").click(position={"x": 590, "y": 410})
+        page.get_by_label("ページ番号").fill("1")
+        page.get_by_role("button", name="操作パネルを隠す").click()
+        page.locator('.reader-pages[data-visible-pages="1,2"]').wait_for(timeout=5_000)
+        for _ in range(6):
+            page.mouse.click(1080, 410)
+        page.wait_for_timeout(900)
+        visible_pages = page.locator(".reader-pages").get_attribute("data-visible-pages")
+        if visible_pages != "3,4" or page.locator(".reader-turn-layer").count():
+            raise AssertionError(f"Rapid taps stranded the page turn: visible={visible_pages!r}")
+
+        for expected, x in (("5,6", 1080), ("3,4", 100), ("1,2", 100)):
+            for _ in range(12):
+                page.mouse.click(x, 410)
+            page.wait_for_timeout(900)
+            visible_pages = page.locator(".reader-pages").get_attribute("data-visible-pages")
+            if visible_pages != expected or page.locator(".reader-turn-layer").count():
+                raise AssertionError(f"Rapid-tap stress turn failed: expected={expected!r} visible={visible_pages!r}")
+            if page.locator(".reader-page-message:visible").count():
+                raise AssertionError(f"Loading remained after rapid-tap stress turn to {expected}")
         browser.close()
 
     if errors:

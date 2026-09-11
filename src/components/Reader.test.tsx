@@ -127,6 +127,25 @@ describe('Reader immersive controls and gestures', () => {
     expect(stage.querySelector('.reader-pages')).toHaveAttribute('data-visible-pages', '1,2');
   });
 
+  it('ignores unmatched pointer releases while a rapid-tap page turn is settling', async () => {
+    const onProgress = vi.fn();
+    render(<Reader book={book} onClose={vi.fn()} onProgress={onProgress} onDirectionChange={vi.fn()} />);
+    await waitFor(() => expect(screen.queryByText('本を開いています…')).not.toBeInTheDocument());
+    const stage = screen.getByRole('dialog').querySelector('.reader-stage') as HTMLElement;
+    vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 1000, top: 0, bottom: 800, width: 1000, height: 800, x: 0, y: 0, toJSON: () => ({}) });
+    fireEvent.pointerDown(stage, { pointerId: 1, clientX: 900, clientY: 400 });
+    fireEvent.pointerUp(stage, { pointerId: 1, clientX: 900, clientY: 400 });
+    for (let pointerId = 2; pointerId <= 7; pointerId += 1) {
+      fireEvent.pointerDown(stage, { pointerId, clientX: 900, clientY: 400 });
+      fireEvent.pointerUp(stage, { pointerId, clientX: 900, clientY: 400 });
+    }
+    expect(stage.querySelector('.reader-pages')).toHaveClass('is-settling');
+    act(() => vi.advanceTimersByTime(754));
+    await waitFor(() => expect(onProgress).toHaveBeenLastCalledWith(3));
+    expect(stage.querySelector('.reader-pages')).toHaveAttribute('data-visible-pages', '3,4');
+    expect(stage.querySelector('.reader-turn-layer')).not.toBeInTheDocument();
+  });
+
   it('turns immediately without a curl when reduced motion is requested', async () => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({
       matches: true,

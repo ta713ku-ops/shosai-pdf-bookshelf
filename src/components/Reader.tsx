@@ -355,9 +355,11 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
         }
       }
     }} onPointerCancel={event => {
+      if (!pointers.current.has(event.pointerId)) return;
       pointers.current.delete(event.pointerId);
       if (!pointers.current.size) { gesture.current = null; finishTurn(false); }
     }} onPointerUp={event => {
+      if (!pointers.current.has(event.pointerId)) return;
       const currentGesture = gesture.current;
       const wasPinching = currentGesture?.pinching || pointers.current.size > 1;
       pointers.current.delete(event.pointerId);
