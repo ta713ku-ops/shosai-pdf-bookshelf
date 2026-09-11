@@ -40,7 +40,7 @@ def main() -> None:
             raise AssertionError("Page curl did not apply a 3D transform")
         page.screenshot(path=output / "shosai-reader-landscape-curl.png")
         page.mouse.up()
-        page.get_by_role("img", name="3ページ").wait_for(timeout=5_000)
+        page.locator('.reader-pages[data-visible-pages="3"]').wait_for(timeout=5_000)
 
         stage.click(position={"x": 590, "y": 410})
         page.locator(".reader:not(.reader-ui-hidden)").wait_for()

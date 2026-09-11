@@ -53,6 +53,7 @@ describe('Reader immersive controls and gestures', () => {
     vi.stubGlobal('ResizeObserver', ResizeObserverMock);
     vi.stubGlobal('PointerEvent', PointerEventMock);
     Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', { configurable: true, value: vi.fn() });
+    Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', { configurable: true, value: vi.fn(() => ({ drawImage: vi.fn() })) });
   });
 
   afterEach(() => {
@@ -95,7 +96,7 @@ describe('Reader immersive controls and gestures', () => {
     expect(curl?.querySelector('.reader-turn-underlay')).toBeInTheDocument();
     fireEvent.pointerUp(stage, { pointerId: 1, clientX: 420, clientY: 402 });
     expect(stage.querySelector('.reader-pages')).toHaveClass('is-settling');
-    act(() => vi.advanceTimersByTime(460));
+    act(() => vi.advanceTimersByTime(720));
     await waitFor(() => expect(onProgress).toHaveBeenCalledWith(3));
   });
 
@@ -108,6 +109,22 @@ describe('Reader immersive controls and gestures', () => {
     const curl = stage.querySelector('.reader-turn-layer');
     expect(curl).toHaveAttribute('data-turn-direction', 'forward');
     expect(curl).toHaveAttribute('data-turn-side', 'left');
+  });
+
+  it('reliably returns to the previous spread after a fast reverse flick', async () => {
+    const onProgress = vi.fn();
+    render(<Reader book={{ ...book, progress: 3, direction: 'rtl' }} onClose={vi.fn()} onProgress={onProgress} onDirectionChange={vi.fn()} />);
+    await waitFor(() => expect(screen.queryByText('本を開いています…')).not.toBeInTheDocument());
+    const stage = screen.getByRole('dialog').querySelector('.reader-stage') as HTMLElement;
+    fireEvent.pointerDown(stage, { pointerId: 1, clientX: 820, clientY: 430 });
+    fireEvent.pointerMove(stage, { pointerId: 1, clientX: 590, clientY: 426 });
+    fireEvent.pointerUp(stage, { pointerId: 1, clientX: 410, clientY: 424 });
+    const curl = stage.querySelector('.reader-turn-layer');
+    expect(curl).toHaveAttribute('data-turn-direction', 'backward');
+    expect(curl).toHaveAttribute('data-turn-side', 'right');
+    act(() => vi.advanceTimersByTime(720));
+    await waitFor(() => expect(onProgress).toHaveBeenLastCalledWith(1));
+    expect(stage.querySelector('.reader-pages')).toHaveAttribute('data-visible-pages', '1,2');
   });
 
   it('turns immediately without a curl when reduced motion is requested', async () => {

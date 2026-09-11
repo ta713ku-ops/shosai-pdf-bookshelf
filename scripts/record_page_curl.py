@@ -62,10 +62,12 @@ def capture_browser_frames() -> None:
 
         page.mouse.up()
         for _ in range(11):
-            page.wait_for_timeout(42)
+            page.wait_for_timeout(66)
             capture()
-        page.get_by_role("img", name="3ページ").wait_for(timeout=5_000)
+        page.locator('.reader-pages[data-visible-pages="3,4"]').wait_for(timeout=5_000)
         page.get_by_role("img", name="4ページ").wait_for(timeout=5_000)
+        if page.locator(".reader-page-message:visible").count():
+            raise AssertionError("A loading placeholder remained after the forward page curl")
         capture(7)
 
         # Confirm that reversing the gesture returns to the first spread.
@@ -75,7 +77,9 @@ def capture_browser_frames() -> None:
         reverse = page.locator('.reader-turn-layer[data-turn-direction="backward"][data-turn-side="right"]')
         reverse.wait_for(timeout=5_000)
         page.mouse.up()
-        page.get_by_role("img", name="1ページ").wait_for(timeout=5_000)
+        page.locator('.reader-pages[data-visible-pages="1,2"]').wait_for(timeout=5_000)
+        if page.locator(".reader-page-message:visible").count():
+            raise AssertionError("A loading placeholder remained after returning to the previous spread")
 
         # Confirm the curl mirrors when the reading direction changes.
         page.locator(".reader-stage").click(position={"x": 590, "y": 410})
@@ -87,7 +91,7 @@ def capture_browser_frames() -> None:
         mirrored = page.locator('.reader-turn-layer[data-turn-direction="forward"][data-turn-side="right"]')
         mirrored.wait_for(timeout=5_000)
         page.mouse.up()
-        page.get_by_role("img", name="3ページ").wait_for(timeout=5_000)
+        page.locator('.reader-pages[data-visible-pages="3,4"]').wait_for(timeout=5_000)
         browser.close()
 
     if errors:

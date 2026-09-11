@@ -21,7 +21,11 @@ type TurnState = {
 };
 
 const CONTROLS_TIMEOUT_MS = 4000;
-const TURN_SETTLE_MS = 460;
+const TURN_SETTLE_MS = 720;
+const MAX_CACHED_PAGES = 8;
+
+type CachedPage = { canvas: HTMLCanvasElement; cssWidth: number; cssHeight: number };
+const pageRenderCache = new WeakMap<PDFDocumentProxy, Map<string, CachedPage>>();
 
 function pointerDistance(points: Map<number, { x: number; y: number }>) {
   const [a, b] = Array.from(points.values());
@@ -36,18 +40,40 @@ function PageCanvas({ pdf, number, width, height, zoom }: { pdf: PDFDocumentProx
     let cancelled = false;
     let render: ReturnType<Awaited<ReturnType<PDFDocumentProxy['getPage']>>['render']> | undefined;
     setReady(false); setError(false);
+    const ratio = Math.min(window.devicePixelRatio || 1, 2);
+    const cacheKey = `${number}:${Math.round(width)}:${Math.round(height)}:${Math.round(zoom * 100)}:${ratio}`;
+    let cache = pageRenderCache.get(pdf);
+    if (!cache) { cache = new Map(); pageRenderCache.set(pdf, cache); }
+    const cached = cache.get(cacheKey);
+    if (cached && canvasRef.current) {
+      const canvas = canvasRef.current;
+      canvas.width = cached.canvas.width; canvas.height = cached.canvas.height;
+      canvas.style.width = `${cached.cssWidth}px`; canvas.style.height = `${cached.cssHeight}px`;
+      const context = canvas.getContext('2d');
+      context?.drawImage(cached.canvas, 0, 0);
+      setReady(true);
+      return;
+    }
     void pdf.getPage(number).then(page => {
       if (cancelled || !canvasRef.current) return;
       const base = page.getViewport({ scale: 1 });
       const scale = Math.min(width / base.width, height / base.height) * zoom;
-      const ratio = Math.min(window.devicePixelRatio || 1, 2);
       const viewport = page.getViewport({ scale: scale * ratio });
       const canvas = canvasRef.current;
       canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
       canvas.style.width = `${viewport.width / ratio}px`; canvas.style.height = `${viewport.height / ratio}px`;
       render = page.render({ canvas, viewport });
       return render.promise;
-    }).then(() => { if (!cancelled) setReady(true); }).catch(() => { if (!cancelled) setError(true); });
+    }).then(() => {
+      if (cancelled || !canvasRef.current) return;
+      const canvas = canvasRef.current;
+      const snapshot = document.createElement('canvas');
+      snapshot.width = canvas.width; snapshot.height = canvas.height;
+      snapshot.getContext('2d')?.drawImage(canvas, 0, 0);
+      cache.set(cacheKey, { canvas: snapshot, cssWidth: canvas.width / ratio, cssHeight: canvas.height / ratio });
+      while (cache.size > MAX_CACHED_PAGES) cache.delete(cache.keys().next().value as string);
+      setReady(true);
+    }).catch(() => { if (!cancelled) setError(true); });
     return () => { cancelled = true; render?.cancel(); };
   }, [pdf, number, width, height, zoom]);
   return <div className="reader-page" aria-busy={!ready && !error}>
@@ -136,6 +162,7 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
   const controlsTimer = useRef<number | null>(null);
   const turnTimer = useRef<number | null>(null);
   const turnFrame = useRef<number | null>(null);
+  const turnRef = useRef<TurnState | null>(null);
   const progressRef = useRef(onProgress); progressRef.current = onProgress;
   const clearControlsTimer = useCallback(() => {
     if (controlsTimer.current !== null) window.clearTimeout(controlsTimer.current);
@@ -161,6 +188,7 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
       clearControlsTimer();
       if (turnTimer.current !== null) window.clearTimeout(turnTimer.current);
       if (turnFrame.current !== null) window.cancelAnimationFrame(turnFrame.current);
+      turnRef.current = null;
       previouslyFocused?.focus?.({ preventScroll: true });
     };
   }, [clearControlsTimer]);
@@ -191,44 +219,57 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
   const directionForDrag = useCallback((dx: number): -1 | 1 => ((dx < 0) === (book.direction === 'ltr') ? 1 : -1), [book.direction]);
   const canMove = useCallback((delta: number) => delta > 0 ? pages[pages.length - 1] < count : pages[0] > 1, [count, pages]);
   const finishTurn = useCallback((commit: boolean) => {
-    if (!turn) return;
-    const delta = turn.delta;
+    const activeTurn = turnRef.current;
+    if (!activeTurn) return;
+    const delta = activeTurn.delta;
     if (turnTimer.current !== null) window.clearTimeout(turnTimer.current);
     if (reducedMotion) {
       if (commit) move(delta);
+      turnRef.current = null;
       setTurn(null);
       return;
     }
-    setTurn(current => current ? { ...current, phase: 'settling', progress: commit ? 1 : 0 } : null);
+    const settlingTurn = { ...activeTurn, phase: 'settling' as const, progress: commit ? 1 : 0 };
+    turnRef.current = settlingTurn;
+    setTurn(settlingTurn);
     turnTimer.current = window.setTimeout(() => {
       if (commit) move(delta);
+      turnRef.current = null;
       setTurn(null);
       turnTimer.current = null;
     }, TURN_SETTLE_MS);
-  }, [move, reducedMotion, turn]);
+  }, [move, reducedMotion]);
   const requestTurn = useCallback((delta: -1 | 1) => {
-    if (turn || !canMove(delta)) return;
+    if (turnRef.current || !canMove(delta)) return;
     if (turnTimer.current !== null) window.clearTimeout(turnTimer.current);
     if (turnFrame.current !== null) window.cancelAnimationFrame(turnFrame.current);
     if (reducedMotion) { move(delta); return; }
-    setTurn({ delta, progress: 0, touchY: .5, phase: 'settling' });
+    const initialTurn: TurnState = { delta, progress: 0, touchY: .5, phase: 'settling' };
+    turnRef.current = initialTurn;
+    setTurn(initialTurn);
     turnFrame.current = window.requestAnimationFrame(() => {
       turnFrame.current = window.requestAnimationFrame(() => {
-        setTurn(current => current?.delta === delta ? { ...current, progress: 1 } : current);
+        const current = turnRef.current;
+        if (!current || current.delta !== delta) return;
+        const completedTurn = { ...current, progress: 1 };
+        turnRef.current = completedTurn;
+        setTurn(completedTurn);
       });
     });
     if (turnTimer.current !== null) window.clearTimeout(turnTimer.current);
     turnTimer.current = window.setTimeout(() => {
       move(delta);
+      turnRef.current = null;
       setTurn(null);
       turnTimer.current = null;
     }, TURN_SETTLE_MS + 34);
-  }, [canMove, move, reducedMotion, turn]);
+  }, [canMove, move, reducedMotion]);
   useEffect(() => {
     if (turnTimer.current !== null) window.clearTimeout(turnTimer.current);
     if (turnFrame.current !== null) window.cancelAnimationFrame(turnFrame.current);
     turnTimer.current = null;
     turnFrame.current = null;
+    turnRef.current = null;
     setTurn(null);
   }, [spread, book.direction]);
   useEffect(() => { if (pdf) progressRef.current(page); }, [page, pdf]);
@@ -263,7 +304,7 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
       <button onClick={hideControls} aria-label="操作パネルを隠す">非表示</button>
     </header>
     <div className="reader-stage" ref={stageRef} onPointerDown={event => {
-      if (turn?.phase === 'settling') return;
+      if (turnRef.current?.phase === 'settling') return;
       event.currentTarget.setPointerCapture(event.pointerId);
       pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
       if (pointers.current.size === 1) gesture.current = {
@@ -276,7 +317,7 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
         gesture.current.pinching = true;
         gesture.current.startDistance = pointerDistance(pointers.current);
         gesture.current.startZoom = zoom;
-        if (turn) finishTurn(false);
+        if (turnRef.current) finishTurn(false);
       }
     }} onPointerMove={event => {
       if (!pointers.current.has(event.pointerId)) return;
@@ -306,7 +347,11 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
           const progress = Math.min(canMove(delta) ? .985 : .14, Math.abs(dx) / distance);
           const bounds = event.currentTarget.getBoundingClientRect();
           const touchY = Math.min(.9, Math.max(.1, (event.clientY - bounds.top) / Math.max(1, bounds.height)));
-          if (!reducedMotion) setTurn({ delta, progress, touchY, phase: 'dragging' });
+          if (!reducedMotion) {
+            const draggingTurn: TurnState = { delta, progress, touchY, phase: 'dragging' };
+            turnRef.current = draggingTurn;
+            setTurn(draggingTurn);
+          }
         }
       }
     }} onPointerCancel={event => {
@@ -338,7 +383,7 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
       event.preventDefault();
       setZoom(value => Math.min(2, Math.max(1, value - event.deltaY * .004)));
     }}>
-      {error ? <div className="reader-state" role="alert"><h2>PDFを開けません</h2><p>{error}</p><button onClick={onClose}>本棚に戻る</button></div> : !pdf ? <p className="reader-state" role="status">本を開いています…</p> : <div className={`reader-pages ${turn?.phase === 'dragging' ? 'is-dragging' : ''} ${turn?.phase === 'settling' ? 'is-settling' : ''}`} style={{ flexDirection: book.direction === 'rtl' ? 'row-reverse' : 'row' }}>
+      {error ? <div className="reader-state" role="alert"><h2>PDFを開けません</h2><p>{error}</p><button onClick={onClose}>本棚に戻る</button></div> : !pdf ? <p className="reader-state" role="status">本を開いています…</p> : <div className={`reader-pages ${turn?.phase === 'dragging' ? 'is-dragging' : ''} ${turn?.phase === 'settling' ? 'is-settling' : ''}`} data-current-page={page} data-visible-pages={pages.join(',')} style={{ flexDirection: book.direction === 'rtl' ? 'row-reverse' : 'row' }}>
         {pages.map(number => <PageCanvas key={number} pdf={pdf} number={number} width={Math.max(100, (size.width - 18) / (spread ? 2 : 1))} height={Math.max(100, size.height - 16)} zoom={zoom} />)}
         {turn && <PageCurl pdf={pdf} page={page} count={count} spread={spread} direction={book.direction} turn={turn} width={Math.max(100, (size.width - 18) / (spread ? 2 : 1))} height={Math.max(100, size.height - 16)} zoom={zoom} />}
       </div>}
