@@ -97,7 +97,19 @@ describe('Reader immersive controls and gestures', () => {
     fireEvent.pointerUp(stage, { pointerId: 1, clientX: 420, clientY: 402 });
     expect(stage.querySelector('.reader-pages')).toHaveClass('is-settling');
     act(() => vi.advanceTimersByTime(1200));
-    await waitFor(() => expect(onProgress).toHaveBeenCalledWith(3));
+    await waitFor(() => expect(onProgress).toHaveBeenCalledWith(2));
+    expect(stage.querySelector('.reader-pages')).toHaveAttribute('data-visible-pages', '2,3');
+  });
+
+  it('shows only the cover before the first body spread in landscape', async () => {
+    render(<Reader book={book} onClose={vi.fn()} onProgress={vi.fn()} onDirectionChange={vi.fn()} />);
+    await waitFor(() => expect(screen.queryByText('本を開いています…')).not.toBeInTheDocument());
+    const pages = screen.getByRole('dialog').querySelector('.reader-pages') as HTMLElement;
+    expect(pages).toHaveAttribute('data-visible-pages', '1');
+    expect(pages.querySelectorAll(':scope > .reader-page')).toHaveLength(1);
+    expect(pages.querySelector('canvas[aria-label="1ページ"]')).toBeInTheDocument();
+    expect(pages.querySelector('canvas[aria-label="2ページ"]')).not.toBeInTheDocument();
+    expect(pages.querySelector('.reader-page-spacer')).toBeInTheDocument();
   });
 
   it('mirrors the physical curl for a right-opening book', async () => {
@@ -133,13 +145,14 @@ describe('Reader immersive controls and gestures', () => {
     expect(backward).toHaveAttribute('data-turn-direction', 'backward');
     expect(backward).toHaveAttribute('data-turn-axis', 'left');
     expect(backward).toHaveClass('is-single');
-    expect(backward?.querySelector('.reader-turn-front canvas[aria-label="1ページ"]')).toBeInTheDocument();
-    expect(backward?.querySelector('.reader-turn-back canvas[aria-label="2ページ"]')).toBeInTheDocument();
+    expect(backward?.querySelector('.reader-turn-front canvas[aria-label="2ページ"]')).toBeInTheDocument();
+    expect(backward?.querySelector('.reader-turn-back canvas[aria-label="1ページ"]')).toBeInTheDocument();
+    expect(backward?.querySelector('.reader-turn-underlay canvas[aria-label="1ページ"]')).toBeInTheDocument();
   });
 
   it('curls the current sheet back across the book when returning to the previous spread', async () => {
     const onProgress = vi.fn();
-    render(<Reader book={{ ...book, progress: 3, direction: 'rtl' }} onClose={vi.fn()} onProgress={onProgress} onDirectionChange={vi.fn()} />);
+    render(<Reader book={{ ...book, progress: 4, direction: 'rtl' }} onClose={vi.fn()} onProgress={onProgress} onDirectionChange={vi.fn()} />);
     await waitFor(() => expect(screen.queryByText('本を開いています…')).not.toBeInTheDocument());
     const stage = screen.getByRole('dialog').querySelector('.reader-stage') as HTMLElement;
     fireEvent.pointerDown(stage, { pointerId: 1, clientX: 820, clientY: 430 });
@@ -150,15 +163,14 @@ describe('Reader immersive controls and gestures', () => {
     expect(curl).toHaveAttribute('data-turn-side', 'right');
     expect(curl).toHaveAttribute('data-turn-axis', 'left');
     expect(curl).toHaveClass('is-spread');
-    expect(curl?.querySelector('.reader-turn-front img[aria-label="3ページ"]')).not.toBeInTheDocument();
-    expect(curl?.querySelector('.reader-turn-front canvas[aria-label="3ページ"]')).toBeInTheDocument();
-    expect(curl?.querySelector('.reader-turn-back canvas[aria-label="2ページ"]')).toBeInTheDocument();
-    expect(curl?.querySelector('.reader-turn-underlay canvas[aria-label="1ページ"]')).toBeInTheDocument();
+    expect(curl?.querySelector('.reader-turn-front canvas[aria-label="4ページ"]')).toBeInTheDocument();
+    expect(curl?.querySelector('.reader-turn-back canvas[aria-label="3ページ"]')).toBeInTheDocument();
+    expect(curl?.querySelector('.reader-turn-underlay canvas[aria-label="2ページ"]')).toBeInTheDocument();
     act(() => vi.advanceTimersByTime(600));
     expect(stage.querySelector('.reader-turn-layer')).toBeInTheDocument();
     act(() => vi.advanceTimersByTime(600));
-    await waitFor(() => expect(onProgress).toHaveBeenLastCalledWith(1));
-    expect(stage.querySelector('.reader-pages')).toHaveAttribute('data-visible-pages', '1,2');
+    await waitFor(() => expect(onProgress).toHaveBeenLastCalledWith(2));
+    expect(stage.querySelector('.reader-pages')).toHaveAttribute('data-visible-pages', '2,3');
   });
 
   it('ignores unmatched pointer releases while a rapid-tap page turn is settling', async () => {
@@ -175,8 +187,8 @@ describe('Reader immersive controls and gestures', () => {
     }
     expect(stage.querySelector('.reader-pages')).toHaveClass('is-settling');
     act(() => vi.advanceTimersByTime(1234));
-    await waitFor(() => expect(onProgress).toHaveBeenLastCalledWith(3));
-    expect(stage.querySelector('.reader-pages')).toHaveAttribute('data-visible-pages', '3,4');
+    await waitFor(() => expect(onProgress).toHaveBeenLastCalledWith(2));
+    expect(stage.querySelector('.reader-pages')).toHaveAttribute('data-visible-pages', '2,3');
     expect(stage.querySelector('.reader-turn-layer')).not.toBeInTheDocument();
   });
 
@@ -194,6 +206,6 @@ describe('Reader immersive controls and gestures', () => {
     fireEvent.pointerMove(stage, { pointerId: 1, clientX: 520, clientY: 402 });
     expect(stage.querySelector('.reader-turn-layer')).not.toBeInTheDocument();
     fireEvent.pointerUp(stage, { pointerId: 1, clientX: 420, clientY: 402 });
-    await waitFor(() => expect(onProgress).toHaveBeenCalledWith(3));
+    await waitFor(() => expect(onProgress).toHaveBeenCalledWith(2));
   });
 });

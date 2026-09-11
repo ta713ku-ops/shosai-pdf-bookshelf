@@ -113,6 +113,12 @@
 
 .reader-pages.is-dragging { cursor: grabbing; }
 
+.reader-page-spacer {
+  align-self: stretch;
+  flex: none;
+  visibility: hidden;
+}
+
 .reader-page {
   position: relative;
   flex: none;

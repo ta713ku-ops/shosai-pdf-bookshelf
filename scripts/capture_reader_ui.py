@@ -26,7 +26,8 @@ def main() -> None:
         page.get_by_role("button", name="reader-previewを開く。1/3ページ").wait_for(timeout=20_000)
         page.get_by_role("button", name="reader-previewを開く。1/3ページ").click()
         page.get_by_role("img", name="1ページ").wait_for(timeout=20_000)
-        page.get_by_role("img", name="2ページ").wait_for(timeout=20_000)
+        if page.get_by_role("img", name="2ページ").count():
+            raise AssertionError("Landscape cover must be displayed without page 2")
         page.screenshot(path=output / "shosai-reader-landscape-hidden.png")
 
         stage = page.locator(".reader-stage")
@@ -40,7 +41,7 @@ def main() -> None:
             raise AssertionError("Page curl did not apply a 3D transform")
         page.screenshot(path=output / "shosai-reader-landscape-curl.png")
         page.mouse.up()
-        page.locator('.reader-pages[data-visible-pages="3"]').wait_for(timeout=5_000)
+        page.locator('.reader-pages[data-visible-pages="2,3"]').wait_for(timeout=5_000)
 
         stage.click(position={"x": 590, "y": 410})
         page.locator(".reader:not(.reader-ui-hidden)").wait_for()

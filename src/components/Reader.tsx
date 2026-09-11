@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { getDocument, type PDFDocumentProxy } from '../lib/pdf';
 import { clampPage, spreadPages, turnPage, type ReadingDirection } from '../lib/reading';
 import { addFullscreenChangeListener, canRequestFullscreen, exitAppFullscreen, isDocumentFullscreen, isStandaloneDisplay, requestAppFullscreen } from '../lib/fullscreen';
@@ -36,7 +36,7 @@ function PageCanvas({ pdf, number, width, height, zoom }: { pdf: PDFDocumentProx
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [error, setError] = useState(false);
   const [ready, setReady] = useState(false);
-  useEffect(() => {
+  useLayoutEffect(() => {
     let cancelled = false;
     let render: ReturnType<Awaited<ReturnType<PDFDocumentProxy['getPage']>>['render']> | undefined;
     setReady(false); setError(false);
@@ -105,18 +105,11 @@ function PageCurl({ pdf, page, count, spread, direction, turn, width, height, zo
   const side = spread
     ? (((turn.delta > 0) === (direction === 'ltr')) ? 'right' : 'left')
     : (direction === 'ltr' ? 'right' : 'left');
-  const isIncomingSinglePage = !spread && turn.delta < 0;
-  const frontPage = isIncomingSinglePage
-    ? targetPages[0]
-    : (turn.delta > 0 ? currentPages[currentPages.length - 1] : currentPages[0]);
-  const backPage = isIncomingSinglePage
-    ? currentPages[0]
-    : (turn.delta > 0 ? targetPages[0] : targetPages[targetPages.length - 1]);
-  const underPage = isIncomingSinglePage
-    ? currentPages[0]
-    : (turn.delta > 0 ? targetPages[targetPages.length - 1] : targetPages[0]);
-  const travel = isIncomingSinglePage ? 1 - turn.progress : turn.progress;
-  const turnSign = side === 'right' ? -1 : 1;
+  const frontPage = turn.delta > 0 ? currentPages[currentPages.length - 1] : currentPages[0];
+  const backPage = turn.delta > 0 ? targetPages[0] : targetPages[targetPages.length - 1];
+  const underPage = turn.delta > 0 ? targetPages[targetPages.length - 1] : targetPages[0];
+  const travel = turn.progress;
+  const turnSign = (side === 'right' ? -1 : 1) * (!spread && turn.delta < 0 ? -1 : 1);
   const curve = Math.sin(Math.PI * turn.progress);
   const style = {
     '--reader-curl-angle': `${turnSign * travel * 180}deg`,
@@ -226,6 +219,8 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
   const spread = size.width > size.height;
   const count = pdf?.numPages || book.pageCount || 1;
   const pages = spreadPages(page, count, spread);
+  const pageWidth = Math.max(100, (size.width - 18) / (spread ? 2 : 1));
+  const pageHeight = Math.max(100, size.height - 16);
   const move = useCallback((delta: number) => setPage(current => turnPage(current, count, spread, delta)), [count, spread]);
   const directionForDrag = useCallback((dx: number): -1 | 1 => ((dx < 0) === (book.direction === 'ltr') ? 1 : -1), [book.direction]);
   const canMove = useCallback((delta: number) => delta > 0 ? pages[pages.length - 1] < count : pages[0] > 1, [count, pages]);
@@ -396,9 +391,10 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
       event.preventDefault();
       setZoom(value => Math.min(2, Math.max(1, value - event.deltaY * .004)));
     }}>
-      {error ? <div className="reader-state" role="alert"><h2>PDFを開けません</h2><p>{error}</p><button onClick={onClose}>本棚に戻る</button></div> : !pdf ? <p className="reader-state" role="status">本を開いています…</p> : <div className={`reader-pages ${turn?.phase === 'dragging' ? 'is-dragging' : ''} ${turn?.phase === 'settling' ? 'is-settling' : ''}`} data-current-page={page} data-visible-pages={pages.join(',')} style={{ flexDirection: book.direction === 'rtl' ? 'row-reverse' : 'row' }}>
-        {pages.map(number => <PageCanvas key={number} pdf={pdf} number={number} width={Math.max(100, (size.width - 18) / (spread ? 2 : 1))} height={Math.max(100, size.height - 16)} zoom={zoom} />)}
-        {turn && <PageCurl pdf={pdf} page={page} count={count} spread={spread} direction={book.direction} turn={turn} width={Math.max(100, (size.width - 18) / (spread ? 2 : 1))} height={Math.max(100, size.height - 16)} zoom={zoom} />}
+      {error ? <div className="reader-state" role="alert"><h2>PDFを開けません</h2><p>{error}</p><button onClick={onClose}>本棚に戻る</button></div> : !pdf ? <p className="reader-state" role="status">本を開いています…</p> : <div className={`reader-pages ${spread ? 'is-spread-layout' : 'is-single-layout'} ${pages.length === 1 ? 'has-single-page' : ''} ${turn?.phase === 'dragging' ? 'is-dragging' : ''} ${turn?.phase === 'settling' ? 'is-settling' : ''}`} data-current-page={page} data-visible-pages={pages.join(',')} style={{ flexDirection: book.direction === 'rtl' ? 'row-reverse' : 'row' }}>
+        {spread && pages.length === 1 && <span className="reader-page-spacer" style={{ width: pageWidth }} aria-hidden="true" />}
+        {pages.map(number => <PageCanvas key={number} pdf={pdf} number={number} width={pageWidth} height={pageHeight} zoom={zoom} />)}
+        {turn && <PageCurl pdf={pdf} page={page} count={count} spread={spread} direction={book.direction} turn={turn} width={pageWidth} height={pageHeight} zoom={zoom} />}
       </div>}
     </div>
     <footer ref={controlsRef} className="reader-controls" onPointerDownCapture={() => showControls(false)} onFocusCapture={() => showControls(false)}>

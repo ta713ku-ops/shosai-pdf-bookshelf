@@ -107,23 +107,23 @@ def main() -> None:
         page.wait_for_function("document.fullscreenElement === null", timeout=5_000)
         page.get_by_role("dialog", name="book-01を読む").wait_for(timeout=15_000)
         page.get_by_role("img", name="1ページ").wait_for(timeout=15_000)
-        if page.locator(".reader-page").count() != 2:
-            raise AssertionError("Landscape reader should show a two-page spread")
+        if page.locator(".reader-pages > .reader-page").count() != 1 or page.get_by_role("img", name="2ページ").count():
+            raise AssertionError("Landscape reader should show the cover alone before body spreads")
         if page.locator(".reader").evaluate("element => !element.classList.contains('reader-ui-hidden')"):
             raise AssertionError("Reader controls should start hidden")
         page.screenshot(path=output / "shosai-reader-landscape.png")
         page.locator(".reader-stage").click(position={"x": 590, "y": 410})
         page.get_by_role("button", name="次のページ").click()
-        page.locator('.reader-pages[data-visible-pages="3"]').wait_for(timeout=5_000)
+        page.locator('.reader-pages[data-visible-pages="2,3"]').wait_for(timeout=5_000)
         page.get_by_role("button", name="本棚に戻る").click()
-        returned_cover = page.get_by_role("button", name="book-01を開く。3/3ページ")
+        returned_cover = page.get_by_role("button", name="book-01を開く。2/3ページ")
         returned_cover.wait_for(timeout=5_000)
         returned_image = returned_cover.locator("img")
         if returned_image.get_attribute("src") != cover_source or not returned_image.evaluate("element => element.complete && element.naturalWidth > 0"):
             raise AssertionError("The book cover disappeared or was replaced after returning from a saved reading position")
 
         page.reload(wait_until="networkidle")
-        page.get_by_role("button", name="book-01を開く。3/3ページ").wait_for(timeout=10_000)
+        page.get_by_role("button", name="book-01を開く。2/3ページ").wait_for(timeout=10_000)
         page.set_viewport_size({"width": 820, "height": 1180})
         page.wait_for_timeout(300)
         page.locator(".library-menu-trigger").click()
@@ -137,12 +137,12 @@ def main() -> None:
         context.set_offline(True)
         page.reload(wait_until="domcontentloaded")
         page.get_by_role("heading", name="すべての本").wait_for(timeout=10_000)
-        page.get_by_role("button", name="book-01を開く。3/3ページ").click()
+        page.get_by_role("button", name="book-01を開く。2/3ページ").click()
         page.wait_for_timeout(2000)
-        if not page.get_by_role("img", name="3ページ").count():
+        if not page.get_by_role("img", name="2ページ").count():
             page.screenshot(path=output / "shosai-reader-offline-failure.png", full_page=True)
             raise AssertionError(f"Offline reader did not render. body={page.locator('body').inner_text()!r} errors={errors!r}")
-        page.get_by_role("img", name="3ページ").wait_for(timeout=15_000)
+        page.get_by_role("img", name="2ページ").wait_for(timeout=15_000)
         if page.locator(".reader-page").count() != 1:
             raise AssertionError("Portrait reader should show one page")
         page.screenshot(path=output / "shosai-reader-offline.png")
