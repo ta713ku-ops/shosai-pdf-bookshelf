@@ -87,8 +87,43 @@ describe('Reader immersive controls and gestures', () => {
     fireEvent.pointerDown(stage, { pointerId: 1, clientX: 800, clientY: 400 });
     fireEvent.pointerMove(stage, { pointerId: 1, clientX: 560, clientY: 402 });
     expect(stage.querySelector('.reader-pages')).toHaveClass('is-dragging');
+    const curl = stage.querySelector('.reader-turn-layer');
+    expect(curl).toHaveAttribute('data-turn-direction', 'forward');
+    expect(curl).toHaveAttribute('data-turn-side', 'right');
+    expect(curl?.querySelector('.reader-turn-front')).toBeInTheDocument();
+    expect(curl?.querySelector('.reader-turn-back')).toBeInTheDocument();
+    expect(curl?.querySelector('.reader-turn-underlay')).toBeInTheDocument();
     fireEvent.pointerUp(stage, { pointerId: 1, clientX: 420, clientY: 402 });
-    act(() => vi.advanceTimersByTime(190));
+    expect(stage.querySelector('.reader-pages')).toHaveClass('is-settling');
+    act(() => vi.advanceTimersByTime(460));
+    await waitFor(() => expect(onProgress).toHaveBeenCalledWith(3));
+  });
+
+  it('mirrors the physical curl for a right-opening book', async () => {
+    render(<Reader book={{ ...book, direction: 'rtl' }} onClose={vi.fn()} onProgress={vi.fn()} onDirectionChange={vi.fn()} />);
+    await waitFor(() => expect(screen.queryByText('本を開いています…')).not.toBeInTheDocument());
+    const stage = screen.getByRole('dialog').querySelector('.reader-stage') as HTMLElement;
+    fireEvent.pointerDown(stage, { pointerId: 1, clientX: 220, clientY: 400 });
+    fireEvent.pointerMove(stage, { pointerId: 1, clientX: 520, clientY: 402 });
+    const curl = stage.querySelector('.reader-turn-layer');
+    expect(curl).toHaveAttribute('data-turn-direction', 'forward');
+    expect(curl).toHaveAttribute('data-turn-side', 'left');
+  });
+
+  it('turns immediately without a curl when reduced motion is requested', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })));
+    const onProgress = vi.fn();
+    render(<Reader book={book} onClose={vi.fn()} onProgress={onProgress} onDirectionChange={vi.fn()} />);
+    await waitFor(() => expect(screen.queryByText('本を開いています…')).not.toBeInTheDocument());
+    const stage = screen.getByRole('dialog').querySelector('.reader-stage') as HTMLElement;
+    fireEvent.pointerDown(stage, { pointerId: 1, clientX: 800, clientY: 400 });
+    fireEvent.pointerMove(stage, { pointerId: 1, clientX: 520, clientY: 402 });
+    expect(stage.querySelector('.reader-turn-layer')).not.toBeInTheDocument();
+    fireEvent.pointerUp(stage, { pointerId: 1, clientX: 420, clientY: 402 });
     await waitFor(() => expect(onProgress).toHaveBeenCalledWith(3));
   });
 });

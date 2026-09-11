@@ -13,8 +13,15 @@ type GestureState = {
   lastX: number; lastTime: number; velocityX: number;
 };
 
+type TurnState = {
+  delta: -1 | 1;
+  progress: number;
+  touchY: number;
+  phase: 'dragging' | 'settling';
+};
+
 const CONTROLS_TIMEOUT_MS = 4000;
-const TURN_SETTLE_MS = 190;
+const TURN_SETTLE_MS = 460;
 
 function pointerDistance(points: Map<number, { x: number; y: number }>) {
   const [a, b] = Array.from(points.values());
@@ -49,6 +56,66 @@ function PageCanvas({ pdf, number, width, height, zoom }: { pdf: PDFDocumentProx
   </div>;
 }
 
+function useReducedMotion() {
+  const [reduced, setReduced] = useState(() => typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => setReduced(query.matches);
+    query.addEventListener?.('change', update);
+    return () => query.removeEventListener?.('change', update);
+  }, []);
+  return reduced;
+}
+
+function PageCurl({ pdf, page, count, spread, direction, turn, width, height, zoom }: {
+  pdf: PDFDocumentProxy; page: number; count: number; spread: boolean; direction: ReadingDirection;
+  turn: TurnState; width: number; height: number; zoom: number;
+}) {
+  const currentPages = spreadPages(page, count, spread);
+  const targetPages = spreadPages(turnPage(page, count, spread, turn.delta), count, spread);
+  const side = ((turn.delta > 0) === (direction === 'ltr')) ? 'right' : 'left';
+  const currentEdge = currentPages[currentPages.length - 1];
+  const targetNear = targetPages[0];
+  const frontPage = turn.delta > 0 ? currentEdge : targetNear;
+  const backPage = turn.delta > 0 ? targetNear : currentEdge;
+  const underPage = turn.delta > 0 ? targetPages[targetPages.length - 1] : currentPages[0];
+  const travel = turn.delta > 0 ? turn.progress : 1 - turn.progress;
+  const turnSign = side === 'right' ? -1 : 1;
+  const curve = Math.sin(Math.PI * turn.progress);
+  const style = {
+    '--reader-curl-angle': `${turnSign * travel * 180}deg`,
+    '--reader-curl-progress': turn.progress,
+    '--reader-curl-curve': curve,
+    '--reader-curl-touch-y': `${turn.touchY * 100}%`,
+    '--reader-curl-lift': `${(turn.touchY - .5) * curve * 5.5}deg`,
+  } as React.CSSProperties;
+
+  return <div
+    className={`reader-turn-layer ${spread && currentPages.length > 1 ? 'is-spread' : 'is-single'} is-${side} is-${turn.delta > 0 ? 'forward' : 'backward'} is-${turn.phase}`}
+    data-turn-side={side}
+    data-turn-direction={turn.delta > 0 ? 'forward' : 'backward'}
+    aria-hidden="true"
+    style={style}
+  >
+    <div className="reader-turn-underlay">
+      <PageCanvas pdf={pdf} number={underPage} width={width} height={height} zoom={zoom} />
+    </div>
+    <div className="reader-turn-cast-shadow" />
+    <div className="reader-turn-sheet">
+      <div className="reader-turn-face reader-turn-front">
+        <PageCanvas pdf={pdf} number={frontPage} width={width} height={height} zoom={zoom} />
+        <span className="reader-turn-ink-shadow" />
+      </div>
+      <div className="reader-turn-face reader-turn-back">
+        <PageCanvas pdf={pdf} number={backPage} width={width} height={height} zoom={zoom} />
+        <span className="reader-turn-paper-glow" />
+      </div>
+      <span className="reader-turn-fold" />
+    </div>
+  </div>;
+}
+
 export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderProps) {
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [error, setError] = useState('');
@@ -59,9 +126,8 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
   const [fullscreen, setFullscreen] = useState(() => isDocumentFullscreen());
   const wasFullscreen = useRef(isDocumentFullscreen());
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
-  const [dragOffset, setDragOffset] = useState(0);
-  const [dragging, setDragging] = useState(false);
-  const [settling, setSettling] = useState(false);
+  const [turn, setTurn] = useState<TurnState | null>(null);
+  const reducedMotion = useReducedMotion();
   const readerRef = useRef<HTMLElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -69,6 +135,7 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
   const gesture = useRef<GestureState | null>(null);
   const controlsTimer = useRef<number | null>(null);
   const turnTimer = useRef<number | null>(null);
+  const turnFrame = useRef<number | null>(null);
   const progressRef = useRef(onProgress); progressRef.current = onProgress;
   const clearControlsTimer = useCallback(() => {
     if (controlsTimer.current !== null) window.clearTimeout(controlsTimer.current);
@@ -93,6 +160,7 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
     return () => {
       clearControlsTimer();
       if (turnTimer.current !== null) window.clearTimeout(turnTimer.current);
+      if (turnFrame.current !== null) window.cancelAnimationFrame(turnFrame.current);
       previouslyFocused?.focus?.({ preventScroll: true });
     };
   }, [clearControlsTimer]);
@@ -120,26 +188,49 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
   const count = pdf?.numPages || book.pageCount || 1;
   const pages = spreadPages(page, count, spread);
   const move = useCallback((delta: number) => setPage(current => turnPage(current, count, spread, delta)), [count, spread]);
-  const directionForDrag = useCallback((dx: number) => ((dx < 0) === (book.direction === 'ltr') ? 1 : -1), [book.direction]);
+  const directionForDrag = useCallback((dx: number): -1 | 1 => ((dx < 0) === (book.direction === 'ltr') ? 1 : -1), [book.direction]);
   const canMove = useCallback((delta: number) => delta > 0 ? pages[pages.length - 1] < count : pages[0] > 1, [count, pages]);
-  const resetDrag = useCallback(() => {
-    setDragging(false);
-    setSettling(true);
-    setDragOffset(0);
+  const finishTurn = useCallback((commit: boolean) => {
+    if (!turn) return;
+    const delta = turn.delta;
     if (turnTimer.current !== null) window.clearTimeout(turnTimer.current);
-    turnTimer.current = window.setTimeout(() => setSettling(false), TURN_SETTLE_MS);
-  }, []);
-  const completeDrag = useCallback((dx: number, delta: number) => {
-    setDragging(false);
-    setSettling(true);
-    setDragOffset(dx < 0 ? -Math.max(size.width, 320) : Math.max(size.width, 320));
+    if (reducedMotion) {
+      if (commit) move(delta);
+      setTurn(null);
+      return;
+    }
+    setTurn(current => current ? { ...current, phase: 'settling', progress: commit ? 1 : 0 } : null);
+    turnTimer.current = window.setTimeout(() => {
+      if (commit) move(delta);
+      setTurn(null);
+      turnTimer.current = null;
+    }, TURN_SETTLE_MS);
+  }, [move, reducedMotion, turn]);
+  const requestTurn = useCallback((delta: -1 | 1) => {
+    if (turn || !canMove(delta)) return;
+    if (turnTimer.current !== null) window.clearTimeout(turnTimer.current);
+    if (turnFrame.current !== null) window.cancelAnimationFrame(turnFrame.current);
+    if (reducedMotion) { move(delta); return; }
+    setTurn({ delta, progress: 0, touchY: .5, phase: 'settling' });
+    turnFrame.current = window.requestAnimationFrame(() => {
+      turnFrame.current = window.requestAnimationFrame(() => {
+        setTurn(current => current?.delta === delta ? { ...current, progress: 1 } : current);
+      });
+    });
     if (turnTimer.current !== null) window.clearTimeout(turnTimer.current);
     turnTimer.current = window.setTimeout(() => {
       move(delta);
-      setSettling(false);
-      setDragOffset(0);
-    }, TURN_SETTLE_MS);
-  }, [move, size.width]);
+      setTurn(null);
+      turnTimer.current = null;
+    }, TURN_SETTLE_MS + 34);
+  }, [canMove, move, reducedMotion, turn]);
+  useEffect(() => {
+    if (turnTimer.current !== null) window.clearTimeout(turnTimer.current);
+    if (turnFrame.current !== null) window.cancelAnimationFrame(turnFrame.current);
+    turnTimer.current = null;
+    turnFrame.current = null;
+    setTurn(null);
+  }, [spread, book.direction]);
   useEffect(() => { if (pdf) progressRef.current(page); }, [page, pdf]);
   useEffect(() => {
     const syncFullscreen = () => {
@@ -155,11 +246,11 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
     const key = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !isDocumentFullscreen()) onClose();
       if ((event.target as HTMLElement).matches('input, select, textarea, button')) return;
-      if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') { event.preventDefault(); showControls(false); move((event.key === 'ArrowRight') === (book.direction === 'ltr') ? 1 : -1); }
+      if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') { event.preventDefault(); showControls(false); requestTurn((event.key === 'ArrowRight') === (book.direction === 'ltr') ? 1 : -1); }
       if (event.key === ' ') { event.preventDefault(); visible ? hideControls() : showControls(false); }
     };
     window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key);
-  }, [move, onClose, book.direction, visible, hideControls, showControls]);
+  }, [requestTurn, onClose, book.direction, visible, hideControls, showControls]);
   const toggleFullscreen = () => {
     if (isDocumentFullscreen()) void exitAppFullscreen();
     else void requestAppFullscreen().then(setFullscreen);
@@ -172,6 +263,7 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
       <button onClick={hideControls} aria-label="操作パネルを隠す">非表示</button>
     </header>
     <div className="reader-stage" ref={stageRef} onPointerDown={event => {
+      if (turn?.phase === 'settling') return;
       event.currentTarget.setPointerCapture(event.pointerId);
       pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
       if (pointers.current.size === 1) gesture.current = {
@@ -184,6 +276,7 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
         gesture.current.pinching = true;
         gesture.current.startDistance = pointerDistance(pointers.current);
         gesture.current.startZoom = zoom;
+        if (turn) finishTurn(false);
       }
     }} onPointerMove={event => {
       if (!pointers.current.has(event.pointerId)) return;
@@ -208,46 +301,52 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
         currentGesture.lastTime = now;
         if (Math.abs(dx) > 5 && Math.abs(dx) > Math.abs(dy) * .85) {
           event.preventDefault();
-          const resisted = canMove(directionForDrag(dx)) ? dx : dx * .24;
-          setDragging(true);
-          setSettling(false);
-          setDragOffset(resisted);
+          const delta = directionForDrag(dx);
+          const distance = Math.max(120, size.width * (spread && pages.length > 1 ? .48 : .82));
+          const progress = Math.min(canMove(delta) ? .985 : .14, Math.abs(dx) / distance);
+          const bounds = event.currentTarget.getBoundingClientRect();
+          const touchY = Math.min(.9, Math.max(.1, (event.clientY - bounds.top) / Math.max(1, bounds.height)));
+          if (!reducedMotion) setTurn({ delta, progress, touchY, phase: 'dragging' });
         }
       }
     }} onPointerCancel={event => {
       pointers.current.delete(event.pointerId);
-      if (!pointers.current.size) { gesture.current = null; resetDrag(); }
+      if (!pointers.current.size) { gesture.current = null; finishTurn(false); }
     }} onPointerUp={event => {
       const currentGesture = gesture.current;
       const wasPinching = currentGesture?.pinching || pointers.current.size > 1;
       pointers.current.delete(event.pointerId);
       if (!pointers.current.size) gesture.current = null;
-      if (!currentGesture || wasPinching || zoom > 1) { resetDrag(); return; }
+      if (!currentGesture || wasPinching || zoom > 1) { finishTurn(false); return; }
       const dx = event.clientX - currentGesture.startX; const dy = event.clientY - currentGesture.startY;
       const sinceLastMove = performance.now() - currentGesture.lastTime;
       const releaseVelocity = sinceLastMove <= 120 ? currentGesture.velocityX : 0;
       const delta = directionForDrag(dx || releaseVelocity);
       const shouldTurn = Math.abs(dx) > Math.max(56, size.width * .14) || Math.abs(releaseVelocity) > .55;
-      if (shouldTurn && Math.abs(dx) > Math.abs(dy) * 1.1 && canMove(delta)) completeDrag(dx || releaseVelocity, delta);
+      if (shouldTurn && Math.abs(dx) > Math.abs(dy) * 1.1 && canMove(delta)) {
+        if (reducedMotion) move(delta);
+        else finishTurn(true);
+      }
       else if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
         const bounds = event.currentTarget.getBoundingClientRect(); const x = (event.clientX - bounds.left) / bounds.width;
-        if (x < .22) move(book.direction === 'rtl' ? 1 : -1);
-        else if (x > .78) move(book.direction === 'rtl' ? -1 : 1);
+        if (x < .22) requestTurn(book.direction === 'rtl' ? 1 : -1);
+        else if (x > .78) requestTurn(book.direction === 'rtl' ? -1 : 1);
         else visible ? hideControls() : showControls();
-      } else resetDrag();
+      } else finishTurn(false);
     }} onWheel={event => {
       if (!event.ctrlKey && !event.metaKey) return;
       event.preventDefault();
       setZoom(value => Math.min(2, Math.max(1, value - event.deltaY * .004)));
     }}>
-      {error ? <div className="reader-state" role="alert"><h2>PDFを開けません</h2><p>{error}</p><button onClick={onClose}>本棚に戻る</button></div> : !pdf ? <p className="reader-state" role="status">本を開いています…</p> : <div className={`reader-pages ${dragging ? 'is-dragging' : ''} ${settling ? 'is-settling' : ''}`} style={{ flexDirection: book.direction === 'rtl' ? 'row-reverse' : 'row', '--reader-drag-x': `${dragOffset}px` } as React.CSSProperties}>
+      {error ? <div className="reader-state" role="alert"><h2>PDFを開けません</h2><p>{error}</p><button onClick={onClose}>本棚に戻る</button></div> : !pdf ? <p className="reader-state" role="status">本を開いています…</p> : <div className={`reader-pages ${turn?.phase === 'dragging' ? 'is-dragging' : ''} ${turn?.phase === 'settling' ? 'is-settling' : ''}`} style={{ flexDirection: book.direction === 'rtl' ? 'row-reverse' : 'row' }}>
         {pages.map(number => <PageCanvas key={number} pdf={pdf} number={number} width={Math.max(100, (size.width - 18) / (spread ? 2 : 1))} height={Math.max(100, size.height - 16)} zoom={zoom} />)}
+        {turn && <PageCurl pdf={pdf} page={page} count={count} spread={spread} direction={book.direction} turn={turn} width={Math.max(100, (size.width - 18) / (spread ? 2 : 1))} height={Math.max(100, size.height - 16)} zoom={zoom} />}
       </div>}
     </div>
     <footer ref={controlsRef} className="reader-controls" onPointerDownCapture={() => showControls(false)} onFocusCapture={() => showControls(false)}>
-      <div className="reader-paging"><button disabled={pages[0] <= 1 || !pdf} onClick={() => move(-1)} aria-label="前のページ">前へ</button>
+      <div className="reader-paging"><button disabled={pages[0] <= 1 || !pdf} onClick={() => requestTurn(-1)} aria-label="前のページ">前へ</button>
         <label className="reader-page-input"><span className="reader-sr">ページ番号</span><input aria-label="ページ番号" type="number" min={1} max={count} value={page} onChange={event => setPage(clampPage(Number(event.target.value), count))} /><span>/ {count}</span></label>
-        <button disabled={pages[pages.length - 1] >= count || !pdf} onClick={() => move(1)} aria-label="次のページ">次へ</button></div>
+        <button disabled={pages[pages.length - 1] >= count || !pdf} onClick={() => requestTurn(1)} aria-label="次のページ">次へ</button></div>
       <div className="reader-settings"><button disabled={zoom <= 1} aria-label="縮小" onClick={() => setZoom(value => Math.max(1, value - .25))}>−</button><button onClick={() => setZoom(1)} aria-label="表示倍率をリセット">{Math.round(zoom * 100)}%</button><button disabled={zoom >= 2} aria-label="拡大" onClick={() => setZoom(value => Math.min(2, value + .25))}>＋</button>
         <select aria-label="本の開き方向" value={book.direction} onChange={event => onDirectionChange(event.target.value as ReadingDirection)}><option value="rtl">右開き</option><option value="ltr">左開き</option></select></div>
     </footer>

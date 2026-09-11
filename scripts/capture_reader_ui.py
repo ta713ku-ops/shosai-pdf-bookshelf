@@ -30,6 +30,18 @@ def main() -> None:
         page.screenshot(path=output / "shosai-reader-landscape-hidden.png")
 
         stage = page.locator(".reader-stage")
+        page.mouse.move(220, 410)
+        page.mouse.down()
+        page.mouse.move(520, 410, steps=12)
+        curl = page.locator('.reader-turn-layer[data-turn-direction="forward"][data-turn-side="left"]')
+        curl.wait_for(timeout=5_000)
+        transform = page.locator(".reader-turn-sheet").evaluate("element => getComputedStyle(element).transform")
+        if transform == "none":
+            raise AssertionError("Page curl did not apply a 3D transform")
+        page.screenshot(path=output / "shosai-reader-landscape-curl.png")
+        page.mouse.up()
+        page.get_by_role("img", name="3ページ").wait_for(timeout=5_000)
+
         stage.click(position={"x": 590, "y": 410})
         page.locator(".reader:not(.reader-ui-hidden)").wait_for()
         page.wait_for_timeout(350)
@@ -49,7 +61,7 @@ def main() -> None:
         page.screenshot(path=output / "shosai-reader-portrait-controls.png")
         browser.close()
 
-    print("Captured landscape/portrait reader UI with controls hidden and visible.")
+    print("Captured and verified landscape page curl plus portrait/landscape reader UI.")
 
 
 if __name__ == "__main__":

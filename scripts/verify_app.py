@@ -5,14 +5,18 @@ sys.path.insert(0, "/tmp/shosai-playwright")
 from playwright.sync_api import sync_playwright
 
 
-def make_pdf() -> bytes:
-    streams = [f"BT /F1 28 Tf 72 700 Td (Shosai Test Book - Page {number}) Tj ET".encode() for number in range(1, 4)]
+def make_pdf(page_count: int = 3) -> bytes:
+    streams = [f"BT /F1 28 Tf 72 700 Td (Shosai Test Book - Page {number}) Tj ET".encode() for number in range(1, page_count + 1)]
+    font_object = page_count + 3
+    content_start = font_object + 1
+    page_objects = " ".join(f"{number} 0 R" for number in range(3, page_count + 3))
     objects = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
-        b"<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R] /Count 3 >>",
-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 6 0 R >> >> /Contents 7 0 R >>",
-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 6 0 R >> >> /Contents 8 0 R >>",
-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 6 0 R >> >> /Contents 9 0 R >>",
+        f"<< /Type /Pages /Kids [{page_objects}] /Count {page_count} >>".encode(),
+        *[
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 {font_object} 0 R >> >> /Contents {content_start + index} 0 R >>".encode()
+            for index in range(page_count)
+        ],
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
         *[b"<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream) for stream in streams],
     ]
