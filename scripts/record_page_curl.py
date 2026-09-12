@@ -189,11 +189,16 @@ def capture_browser_frames() -> None:
             const layer = document.querySelector('.reader-turn-layer');
             const sheet = layer?.querySelector('.reader-turn-sheet');
             const style = sheet ? getComputedStyle(sheet) : null;
+            const layerRect = layer?.getBoundingClientRect();
+            const sheetRect = sheet?.getBoundingClientRect();
             window.__portraitTurnFrames.push({
               elapsed: performance.now() - started,
               hasTurn: Boolean(layer),
               messageCount: document.querySelectorAll('.reader-turn-layer .reader-page-message').length,
-              width: sheet?.getBoundingClientRect().width ?? 0,
+              width: sheetRect?.width ?? 0,
+              visibleWidth: layerRect && sheetRect
+                ? Math.max(0, Math.min(layerRect.right, sheetRect.right) - Math.max(layerRect.left, sheetRect.left))
+                : 0,
               opacity: style ? Number(style.opacity) : 0,
               transform: style?.transform ?? 'none',
             });
@@ -218,8 +223,11 @@ def capture_browser_frames() -> None:
         if any(frame["opacity"] < .99 for frame in active_frames):
             raise AssertionError("Portrait backward page faded out instead of turning into view")
         widths = [frame["width"] for frame in active_frames]
-        if min(widths) < 80 or max(widths) < 740 or widths[-1] <= widths[0]:
-            raise AssertionError(f"Portrait backward page did not open continuously from the binding: {widths[0]:.1f} -> {widths[-1]:.1f}")
+        visible_widths = [frame["visibleWidth"] for frame in active_frames]
+        if min(widths) < 730:
+            raise AssertionError("Portrait backward page warped too heavily during its return")
+        if min(visible_widths) > 300 or max(visible_widths) < 740 or visible_widths[-1] <= visible_widths[0]:
+            raise AssertionError(f"Portrait backward page did not slide continuously from the binding: {visible_widths[0]:.1f} -> {visible_widths[-1]:.1f}")
         page.locator('.reader-pages[data-visible-pages="1"]').wait_for(timeout=5_000)
 
         # Mirror the incoming portrait page for the default right-opening mode.

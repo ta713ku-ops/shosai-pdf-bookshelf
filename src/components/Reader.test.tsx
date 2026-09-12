@@ -148,7 +148,8 @@ describe('Reader immersive controls and gestures', () => {
     expect(backward).toHaveClass('is-portrait-backward');
     const backwardAngle = parseFloat((backward as HTMLElement).style.getPropertyValue('--reader-curl-angle'));
     expect(Math.abs(backwardAngle)).toBeGreaterThan(0);
-    expect(Math.abs(backwardAngle)).toBeLessThan(82);
+    expect(Math.abs(backwardAngle)).toBeLessThan(8);
+    expect(parseFloat((backward as HTMLElement).style.getPropertyValue('--reader-curl-shift'))).toBeLessThan(0);
     expect(backward?.querySelector('.reader-turn-front canvas[aria-label="1ページ"]')).toBeInTheDocument();
     expect(backward?.querySelector('.reader-turn-back canvas[aria-label="2ページ"]')).toBeInTheDocument();
     expect(backward?.querySelector('.reader-turn-underlay canvas')).not.toBeInTheDocument();
@@ -169,6 +170,7 @@ describe('Reader immersive controls and gestures', () => {
     expect(backward).toHaveAttribute('data-turn-side', 'left');
     expect(backward).toHaveAttribute('data-turn-axis', 'right');
     expect(parseFloat(backward.style.getPropertyValue('--reader-curl-angle'))).toBeLessThan(0);
+    expect(parseFloat(backward.style.getPropertyValue('--reader-curl-shift'))).toBeGreaterThan(0);
     expect(backward.querySelector('.reader-turn-front canvas[aria-label="1ページ"]')).toBeInTheDocument();
     expect(backward.querySelector('.reader-turn-underlay canvas')).not.toBeInTheDocument();
   });

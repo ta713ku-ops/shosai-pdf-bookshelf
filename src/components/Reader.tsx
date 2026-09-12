@@ -121,13 +121,16 @@ function PageCurl({ pdf, page, count, spread, direction, turn, width, height, zo
   const travel = portraitBackward ? 1 - turn.progress : turn.progress;
   const turnSign = (side === 'right' ? -1 : 1) * (!spread && turn.delta < 0 ? -1 : 1);
   const curve = Math.sin(Math.PI * turn.progress);
-  const turnExtent = portraitBackward ? 82 : 180;
+  const turnExtent = portraitBackward ? 8 : 180;
+  const incomingShift = portraitBackward ? (side === 'left' ? 1 : -1) * travel * 92 : 0;
+  const liftExtent = portraitBackward ? 2.2 : 5.5;
   const style = {
     '--reader-curl-angle': `${turnSign * travel * turnExtent}deg`,
+    '--reader-curl-shift': `${incomingShift}%`,
     '--reader-curl-progress': turn.progress,
     '--reader-curl-curve': curve,
     '--reader-curl-touch-y': `${turn.touchY * 100}%`,
-    '--reader-curl-lift': `${(turn.touchY - .5) * curve * 5.5}deg`,
+    '--reader-curl-lift': `${(turn.touchY - .5) * curve * liftExtent}deg`,
     '--reader-turn-duration': `${TURN_SETTLE_MS}ms`,
   } as React.CSSProperties;
 

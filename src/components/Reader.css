@@ -203,8 +203,22 @@
 .reader-turn-sheet {
   z-index: 3;
   transform-style: preserve-3d;
-  transform: rotateZ(var(--reader-curl-lift)) rotateY(var(--reader-curl-angle));
+  transform: translate3d(var(--reader-curl-shift, 0%), 0, 0) rotateZ(var(--reader-curl-lift)) rotateY(var(--reader-curl-angle));
   will-change: transform;
+}
+
+.reader-turn-layer.is-portrait-backward .reader-turn-cast-shadow {
+  opacity: calc(.08 + var(--reader-curl-curve) * .38);
+  filter: blur(calc(5px + var(--reader-curl-curve) * 9px));
+  transform: translateX(var(--reader-curl-shift)) scaleX(calc(.92 + var(--reader-curl-curve) * .12));
+}
+
+.reader-turn-layer.is-portrait-backward.is-left .reader-turn-sheet {
+  box-shadow: -18px 0 34px rgba(0, 0, 0, .26);
+}
+
+.reader-turn-layer.is-portrait-backward.is-right .reader-turn-sheet {
+  box-shadow: 18px 0 34px rgba(0, 0, 0, .26);
 }
 
 .reader-turn-layer.is-left .reader-turn-sheet {
