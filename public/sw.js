@@ -1,6 +1,6 @@
 /* Only the application shell belongs here. PDFs and library data stay in IndexedDB. */
 const CACHE_PREFIX = 'shosai-shell-'
-const CACHE_NAME = `${CACHE_PREFIX}v3`
+const CACHE_NAME = `${CACHE_PREFIX}v4`
 const BASE = new URL('./', self.registration.scope)
 const SHELL = new URL('index.html', BASE).href
 const SHELL_URLS = [SHELL, new URL('manifest.webmanifest', BASE).href, new URL('icon.svg', BASE).href, new URL('apple-touch-icon.png', BASE).href]

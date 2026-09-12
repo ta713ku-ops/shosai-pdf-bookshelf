@@ -171,9 +171,14 @@
   box-shadow: inset 0 0 24px rgba(58, 47, 34, .14);
 }
 
-/* The cover is one physical leaf. While returning to it, the empty half of
-   the open book stays black instead of drawing a second copy underneath. */
-.reader-turn-layer.is-target-cover .reader-turn-underlay {
+/* Closing onto the cover is a single-leaf motion. Conceal the old spread so
+   a body page cannot flash beside the moving cover. */
+.reader-turn-layer.is-target-cover {
+  background: #000;
+}
+
+.reader-turn-layer.is-target-cover .reader-turn-underlay,
+.reader-turn-layer.is-portrait-backward .reader-turn-underlay {
   background: transparent;
   box-shadow: none;
 }
@@ -197,7 +202,6 @@
 
 .reader-turn-sheet {
   z-index: 3;
-  opacity: var(--reader-curl-sheet-opacity, 1);
   transform-style: preserve-3d;
   transform: rotateZ(var(--reader-curl-lift)) rotateY(var(--reader-curl-angle));
   will-change: transform;
@@ -213,7 +217,7 @@
 }
 
 .reader-turn-layer.is-settling .reader-turn-sheet {
-  transition: transform var(--reader-turn-duration, 1200ms) cubic-bezier(.32, .06, .18, 1), border-radius var(--reader-turn-duration, 1200ms) ease, opacity var(--reader-turn-duration, 1200ms) cubic-bezier(.55, 0, .85, .38);
+  transition: transform var(--reader-turn-duration, 1200ms) cubic-bezier(.32, .06, .18, 1), border-radius var(--reader-turn-duration, 1200ms) ease;
 }
 
 .reader-turn-layer.is-settling .reader-turn-cast-shadow {

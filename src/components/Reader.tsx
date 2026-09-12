@@ -105,24 +105,27 @@ function PageCurl({ pdf, page, count, spread, direction, turn, width, height, zo
   const side = spread
     ? (((turn.delta > 0) === (direction === 'ltr')) ? 'right' : 'left')
     : (direction === 'ltr' ? 'right' : 'left');
-  const frontPage = turn.delta > 0 ? currentPages[currentPages.length - 1] : currentPages[0];
-  const backPage = turn.delta > 0 ? targetPages[0] : targetPages[targetPages.length - 1];
-  const underPage = turn.delta > 0 ? targetPages[targetPages.length - 1] : targetPages[0];
   const targetIsCover = spread && targetPages.length === 1 && targetPages[0] === 1;
   const portraitBackward = !spread && turn.delta < 0;
-  const travel = turn.progress;
+  // A portrait backward turn is an incoming leaf: the previous page opens
+  // from the binding over the current page. This keeps the paper visible and
+  // avoids replacing a real page turn with a fade-out.
+  const frontPage = portraitBackward
+    ? targetPages[0]
+    : turn.delta > 0 ? currentPages[currentPages.length - 1] : currentPages[0];
+  const backPage = portraitBackward
+    ? currentPages[0]
+    : turn.delta > 0 ? targetPages[0] : targetPages[targetPages.length - 1];
+  const underPage = turn.delta > 0 ? targetPages[targetPages.length - 1] : targetPages[0];
+  const hideUnderlay = targetIsCover || portraitBackward;
+  const travel = portraitBackward ? 1 - turn.progress : turn.progress;
   const turnSign = (side === 'right' ? -1 : 1) * (!spread && turn.delta < 0 ? -1 : 1);
   const curve = Math.sin(Math.PI * turn.progress);
-  // A full 180 degree rotation makes a single portrait page collapse to an
-  // almost invisible line halfway through a backward turn. Fold that page
-  // into the binding instead and fade it only near the end of the motion.
   const turnExtent = portraitBackward ? 82 : 180;
-  const sheetOpacity = portraitBackward ? Math.max(0, 1 - Math.pow(travel, 3)) : 1;
   const style = {
     '--reader-curl-angle': `${turnSign * travel * turnExtent}deg`,
     '--reader-curl-progress': turn.progress,
     '--reader-curl-curve': curve,
-    '--reader-curl-sheet-opacity': sheetOpacity,
     '--reader-curl-touch-y': `${turn.touchY * 100}%`,
     '--reader-curl-lift': `${(turn.touchY - .5) * curve * 5.5}deg`,
     '--reader-turn-duration': `${TURN_SETTLE_MS}ms`,
@@ -137,7 +140,7 @@ function PageCurl({ pdf, page, count, spread, direction, turn, width, height, zo
     style={style}
   >
     <div className="reader-turn-underlay">
-      {!targetIsCover && <PageCanvas pdf={pdf} number={underPage} width={width} height={height} zoom={zoom} />}
+      {!hideUnderlay && <PageCanvas pdf={pdf} number={underPage} width={width} height={height} zoom={zoom} />}
     </div>
     <div className="reader-turn-cast-shadow" />
     <div className="reader-turn-sheet">

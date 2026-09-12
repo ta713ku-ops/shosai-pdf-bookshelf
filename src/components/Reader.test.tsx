@@ -149,20 +149,42 @@ describe('Reader immersive controls and gestures', () => {
     const backwardAngle = parseFloat((backward as HTMLElement).style.getPropertyValue('--reader-curl-angle'));
     expect(Math.abs(backwardAngle)).toBeGreaterThan(0);
     expect(Math.abs(backwardAngle)).toBeLessThan(82);
-    expect(backward?.querySelector('.reader-turn-front canvas[aria-label="2ページ"]')).toBeInTheDocument();
-    expect(backward?.querySelector('.reader-turn-back canvas[aria-label="1ページ"]')).toBeInTheDocument();
-    expect(backward?.querySelector('.reader-turn-underlay canvas[aria-label="1ページ"]')).toBeInTheDocument();
+    expect(backward?.querySelector('.reader-turn-front canvas[aria-label="1ページ"]')).toBeInTheDocument();
+    expect(backward?.querySelector('.reader-turn-back canvas[aria-label="2ページ"]')).toBeInTheDocument();
+    expect(backward?.querySelector('.reader-turn-underlay canvas')).not.toBeInTheDocument();
   });
 
-  it('turns one cover leaf without rendering a duplicate underneath in landscape', async () => {
-    const onProgress = vi.fn();
-    render(<Reader book={{ ...book, progress: 2, direction: 'rtl' }} onClose={vi.fn()} onProgress={onProgress} onDirectionChange={vi.fn()} />);
+  it('mirrors the incoming portrait back turn for a right-opening book', async () => {
+    vi.stubGlobal('innerWidth', 820);
+    vi.stubGlobal('innerHeight', 1180);
+    render(<Reader book={{ ...book, progress: 2, direction: 'rtl' }} onClose={vi.fn()} onProgress={vi.fn()} onDirectionChange={vi.fn()} />);
     await waitFor(() => expect(screen.queryByText('本を開いています…')).not.toBeInTheDocument());
     const stage = screen.getByRole('dialog').querySelector('.reader-stage') as HTMLElement;
 
-    fireEvent.pointerDown(stage, { pointerId: 1, clientX: 780, clientY: 430 });
-    fireEvent.pointerMove(stage, { pointerId: 1, clientX: 560, clientY: 430 });
-    fireEvent.pointerUp(stage, { pointerId: 1, clientX: 390, clientY: 430 });
+    fireEvent.pointerDown(stage, { pointerId: 1, clientX: 640, clientY: 560 });
+    fireEvent.pointerMove(stage, { pointerId: 1, clientX: 360, clientY: 560 });
+    const backward = stage.querySelector('.reader-turn-layer') as HTMLElement;
+
+    expect(backward).toHaveAttribute('data-turn-direction', 'backward');
+    expect(backward).toHaveAttribute('data-turn-side', 'left');
+    expect(backward).toHaveAttribute('data-turn-axis', 'right');
+    expect(parseFloat(backward.style.getPropertyValue('--reader-curl-angle'))).toBeLessThan(0);
+    expect(backward.querySelector('.reader-turn-front canvas[aria-label="1ページ"]')).toBeInTheDocument();
+    expect(backward.querySelector('.reader-turn-underlay canvas')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { direction: 'rtl' as const, startX: 780, moveX: 560, endX: 390 },
+    { direction: 'ltr' as const, startX: 200, moveX: 430, endX: 650 },
+  ])('turns one cover leaf without rendering a duplicate underneath in landscape ($direction)', async ({ direction, startX, moveX, endX }) => {
+    const onProgress = vi.fn();
+    render(<Reader book={{ ...book, progress: 2, direction }} onClose={vi.fn()} onProgress={onProgress} onDirectionChange={vi.fn()} />);
+    await waitFor(() => expect(screen.queryByText('本を開いています…')).not.toBeInTheDocument());
+    const stage = screen.getByRole('dialog').querySelector('.reader-stage') as HTMLElement;
+
+    fireEvent.pointerDown(stage, { pointerId: 1, clientX: startX, clientY: 430 });
+    fireEvent.pointerMove(stage, { pointerId: 1, clientX: moveX, clientY: 430 });
+    fireEvent.pointerUp(stage, { pointerId: 1, clientX: endX, clientY: 430 });
 
     const curl = stage.querySelector('.reader-turn-layer');
     expect(curl).toHaveClass('is-target-cover');

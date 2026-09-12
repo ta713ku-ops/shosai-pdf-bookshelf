@@ -87,8 +87,11 @@ def capture_browser_frames() -> None:
             raise AssertionError("The landscape cover curl rendered a duplicate page underneath")
         if reverse.locator('canvas[aria-label="1ページ"]').count() != 1:
             raise AssertionError("The landscape cover curl must contain exactly one cover leaf")
+        if reverse.evaluate("element => getComputedStyle(element).backgroundColor") != "rgb(0, 0, 0)":
+            raise AssertionError("The previous landscape spread was not concealed while closing the cover")
         page.mouse.up()
         page.wait_for_timeout(450)
+        page.screenshot(path="/tmp/shosai-landscape-cover-return.png")
         if not reverse.is_visible():
             raise AssertionError("The backward curl disappeared before its paper motion could be seen")
         reverse_angle = reverse.locator(".reader-turn-sheet").evaluate("element => getComputedStyle(element).transform")
@@ -137,6 +140,20 @@ def capture_browser_frames() -> None:
             if page.locator(".reader-page-message:visible").count():
                 raise AssertionError(f"Loading remained after rapid-tap stress turn to {expected}")
 
+        # The one-leaf cover close must also hold for a left-opening book.
+        page.locator(".reader-stage").click(position={"x": 590, "y": 410})
+        page.get_by_label("ページ番号").fill("2")
+        page.get_by_role("button", name="操作パネルを隠す").click()
+        page.mouse.click(100, 410)
+        left_cover = page.locator('.reader-turn-layer.is-target-cover[data-turn-side="left"]')
+        left_cover.wait_for(timeout=5_000)
+        if left_cover.evaluate("element => getComputedStyle(element).backgroundColor") != "rgb(0, 0, 0)":
+            raise AssertionError("The left-opening cover close exposed the previous spread")
+        if left_cover.locator('canvas[aria-label="1ページ"]').count() != 1:
+            raise AssertionError("The left-opening cover close did not contain exactly one cover")
+        page.wait_for_timeout(1300)
+        page.locator('.reader-pages[data-visible-pages="1"]').wait_for(timeout=5_000)
+
         # Portrait forward and backward turns must share one physical binding axis.
         page.set_viewport_size({"width": 820, "height": 1180})
         page.wait_for_timeout(300)
@@ -180,12 +197,15 @@ def capture_browser_frames() -> None:
               opacity: style ? Number(style.opacity) : 0,
               transform: style?.transform ?? 'none',
             });
-            if (performance.now() - started < 1340) requestAnimationFrame(sample);
+            if (performance.now() - started < 1500) requestAnimationFrame(sample);
           };
           requestAnimationFrame(sample);
         }""")
         page.mouse.click(25, 590)
-        page.wait_for_timeout(1380)
+        for index, delay in enumerate((150, 300, 350, 300)):
+            page.wait_for_timeout(delay)
+            page.screenshot(path=f"/tmp/shosai-portrait-backward-{index}.png")
+        page.wait_for_timeout(400)
         portrait_frames = page.evaluate("window.__portraitTurnFrames")
         if any(frame["messageCount"] for frame in portrait_frames):
             raise AssertionError("Portrait backward turn inserted a transient loading frame")
@@ -195,9 +215,30 @@ def capture_browser_frames() -> None:
         transforms = {frame["transform"] for frame in active_frames if frame["transform"] != "none"}
         if len(transforms) < 8:
             raise AssertionError("Portrait backward animation did not visibly progress")
-        visible_frames = [frame for frame in active_frames if frame["opacity"] >= .2]
-        if not visible_frames or min(frame["width"] for frame in visible_frames) < 180:
-            raise AssertionError("Portrait backward page collapsed before its fade completed")
+        if any(frame["opacity"] < .99 for frame in active_frames):
+            raise AssertionError("Portrait backward page faded out instead of turning into view")
+        widths = [frame["width"] for frame in active_frames]
+        if min(widths) < 80 or max(widths) < 740 or widths[-1] <= widths[0]:
+            raise AssertionError(f"Portrait backward page did not open continuously from the binding: {widths[0]:.1f} -> {widths[-1]:.1f}")
+        page.locator('.reader-pages[data-visible-pages="1"]').wait_for(timeout=5_000)
+
+        # Mirror the incoming portrait page for the default right-opening mode.
+        page.locator(".reader-stage").click(position={"x": 410, "y": 590})
+        page.get_by_label("ページ番号").fill("2")
+        page.get_by_label("本の開き方向").select_option("rtl")
+        page.get_by_role("button", name="操作パネルを隠す").click()
+        page.mouse.click(795, 590)
+        rtl_backward = page.locator('.reader-turn-layer.is-portrait-backward[data-turn-side="left"]')
+        rtl_backward.wait_for(timeout=5_000)
+        if rtl_backward.locator('.reader-turn-front canvas[aria-label="1ページ"]').count() != 1:
+            raise AssertionError("The right-opening portrait return did not animate the previous page")
+        if rtl_backward.locator('.reader-turn-underlay canvas').count():
+            raise AssertionError("The right-opening portrait return hid its animation under a duplicate page")
+        page.wait_for_timeout(500)
+        page.screenshot(path="/tmp/shosai-portrait-backward-rtl.png")
+        if float(rtl_backward.locator('.reader-turn-sheet').evaluate("element => getComputedStyle(element).opacity")) < .99:
+            raise AssertionError("The right-opening portrait return faded out")
+        page.wait_for_timeout(850)
         page.locator('.reader-pages[data-visible-pages="1"]').wait_for(timeout=5_000)
         browser.close()
 
