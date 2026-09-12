@@ -177,10 +177,126 @@
   background: #000;
 }
 
-.reader-turn-layer.is-target-cover .reader-turn-underlay,
-.reader-turn-layer.is-portrait-backward .reader-turn-underlay {
+.reader-turn-layer.is-target-cover .reader-turn-underlay {
   background: transparent;
   box-shadow: none;
+}
+
+/* In portrait, returning to the previous page reveals a stationary sheet from
+   the binding while a curved fold travels across it. The page content itself
+   never slides, so the motion reads as paper opening rather than a carousel. */
+.reader-turn-layer.is-portrait-backward .reader-turn-underlay {
+  background: #fdfcf9;
+  box-shadow: inset 0 0 24px rgba(58, 47, 34, .14);
+  will-change: clip-path;
+}
+
+.reader-turn-layer.is-portrait-backward.is-right .reader-turn-underlay {
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--reader-curl-edge) - var(--reader-curl-top-bend)) 0,
+    calc(100% - var(--reader-curl-edge) + var(--reader-curl-mid-bend)) var(--reader-curl-touch-y),
+    calc(100% - var(--reader-curl-edge) - var(--reader-curl-top-bend)) 100%,
+    0 100%
+  );
+}
+
+.reader-turn-layer.is-portrait-backward.is-left .reader-turn-underlay {
+  clip-path: polygon(
+    calc(var(--reader-curl-edge) + var(--reader-curl-top-bend)) 0,
+    100% 0,
+    calc(var(--reader-curl-edge) - var(--reader-curl-mid-bend)) var(--reader-curl-touch-y),
+    calc(var(--reader-curl-edge) + var(--reader-curl-top-bend)) 100%,
+    100% 100%
+  );
+}
+
+.reader-turn-portrait-fold {
+  position: absolute;
+  z-index: 3;
+  top: -1%;
+  bottom: -1%;
+  width: calc(36px + var(--reader-curl-curve) * 54px);
+  pointer-events: none;
+  opacity: .96;
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .2));
+  will-change: left, right, width;
+}
+
+.reader-turn-portrait-fold::before,
+.reader-turn-portrait-fold::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(44% 0, 56% 0, 100% 48%, 56% 100%, 44% 100%, 0 52%);
+}
+
+.reader-turn-portrait-fold::after {
+  inset: 1.2% 42% 1.2% 42%;
+  background: rgba(255, 255, 255, .78);
+  filter: blur(1.4px);
+}
+
+.reader-turn-layer.is-portrait-backward.is-right .reader-turn-portrait-fold {
+  left: calc(100% - var(--reader-curl-edge));
+  transform: translateX(-50%) rotateZ(var(--reader-curl-lift));
+}
+
+.reader-turn-layer.is-portrait-backward.is-right .reader-turn-portrait-fold::before {
+  background: linear-gradient(90deg, rgba(255, 255, 255, .08), rgba(255, 253, 245, .94) 29%, rgba(91, 72, 51, .38) 51%, rgba(255, 255, 255, .82) 68%, rgba(29, 22, 15, .3));
+  box-shadow: -16px 0 23px rgba(255, 255, 255, .25), 18px 0 28px rgba(0, 0, 0, .28);
+}
+
+.reader-turn-layer.is-portrait-backward.is-left .reader-turn-portrait-fold {
+  right: calc(100% - var(--reader-curl-edge));
+  transform: translateX(50%) rotateZ(var(--reader-curl-lift));
+}
+
+.reader-turn-layer.is-portrait-backward.is-left .reader-turn-portrait-fold::before {
+  background: linear-gradient(270deg, rgba(255, 255, 255, .08), rgba(255, 253, 245, .94) 29%, rgba(91, 72, 51, .38) 51%, rgba(255, 255, 255, .82) 68%, rgba(29, 22, 15, .3));
+  box-shadow: 16px 0 23px rgba(255, 255, 255, .25), -18px 0 28px rgba(0, 0, 0, .28);
+}
+
+.reader-turn-layer.is-portrait-backward.is-settling .reader-turn-underlay {
+  transition: clip-path var(--reader-turn-duration, 1200ms) cubic-bezier(.32, .06, .18, 1);
+}
+
+.reader-turn-layer.is-portrait-backward.is-settling .reader-turn-portrait-fold {
+  transition: left var(--reader-turn-duration, 1200ms) cubic-bezier(.32, .06, .18, 1), right var(--reader-turn-duration, 1200ms) cubic-bezier(.32, .06, .18, 1), transform var(--reader-turn-duration, 1200ms) ease;
+  animation: reader-portrait-fold-depth var(--reader-turn-duration, 1200ms) ease-in-out both;
+}
+
+.reader-turn-layer.is-portrait-backward.is-settling.is-tap.is-right .reader-turn-underlay {
+  animation: reader-portrait-reveal-right var(--reader-turn-duration, 1200ms) cubic-bezier(.32, .06, .18, 1) both;
+}
+
+.reader-turn-layer.is-portrait-backward.is-settling.is-tap.is-left .reader-turn-underlay {
+  animation: reader-portrait-reveal-left var(--reader-turn-duration, 1200ms) cubic-bezier(.32, .06, .18, 1) both;
+}
+
+@keyframes reader-portrait-reveal-right {
+  0% { clip-path: polygon(0 0, 0 0, 0 50%, 0 100%, 0 100%); }
+  18% { clip-path: polygon(0 0, 8% 0, 13% 50%, 7% 100%, 0 100%); }
+  45% { clip-path: polygon(0 0, 35% 0, 49% 50%, 37% 100%, 0 100%); }
+  72% { clip-path: polygon(0 0, 68% 0, 80% 50%, 71% 100%, 0 100%); }
+  92% { clip-path: polygon(0 0, 94% 0, 98% 50%, 95% 100%, 0 100%); }
+  100% { clip-path: polygon(0 0, 100% 0, 100% 50%, 100% 100%, 0 100%); }
+}
+
+@keyframes reader-portrait-reveal-left {
+  0% { clip-path: polygon(100% 0, 100% 0, 100% 50%, 100% 100%, 100% 100%); }
+  18% { clip-path: polygon(92% 0, 100% 0, 87% 50%, 93% 100%, 100% 100%); }
+  45% { clip-path: polygon(65% 0, 100% 0, 51% 50%, 63% 100%, 100% 100%); }
+  72% { clip-path: polygon(32% 0, 100% 0, 20% 50%, 29% 100%, 100% 100%); }
+  92% { clip-path: polygon(6% 0, 100% 0, 2% 50%, 5% 100%, 100% 100%); }
+  100% { clip-path: polygon(0 0, 100% 0, 0 50%, 0 100%, 100% 100%); }
+}
+
+@keyframes reader-portrait-fold-depth {
+  0% { width: 34px; opacity: .62; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .12)); }
+  42% { width: 92px; opacity: 1; filter: drop-shadow(0 6px 8px rgba(0, 0, 0, .36)); }
+  72% { width: 68px; opacity: .98; filter: drop-shadow(0 4px 6px rgba(0, 0, 0, .28)); }
+  100% { width: 30px; opacity: .58; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .1)); }
 }
 
 .reader-turn-underlay .reader-page,
@@ -203,22 +319,8 @@
 .reader-turn-sheet {
   z-index: 3;
   transform-style: preserve-3d;
-  transform: translate3d(var(--reader-curl-shift, 0%), 0, 0) rotateZ(var(--reader-curl-lift)) rotateY(var(--reader-curl-angle));
+  transform: rotateZ(var(--reader-curl-lift)) rotateY(var(--reader-curl-angle));
   will-change: transform;
-}
-
-.reader-turn-layer.is-portrait-backward .reader-turn-cast-shadow {
-  opacity: calc(.08 + var(--reader-curl-curve) * .38);
-  filter: blur(calc(5px + var(--reader-curl-curve) * 9px));
-  transform: translateX(var(--reader-curl-shift)) scaleX(calc(.92 + var(--reader-curl-curve) * .12));
-}
-
-.reader-turn-layer.is-portrait-backward.is-left .reader-turn-sheet {
-  box-shadow: -18px 0 34px rgba(0, 0, 0, .26);
-}
-
-.reader-turn-layer.is-portrait-backward.is-right .reader-turn-sheet {
-  box-shadow: 18px 0 34px rgba(0, 0, 0, .26);
 }
 
 .reader-turn-layer.is-left .reader-turn-sheet {

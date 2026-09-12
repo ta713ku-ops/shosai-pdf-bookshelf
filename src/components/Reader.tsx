@@ -18,6 +18,7 @@ type TurnState = {
   progress: number;
   touchY: number;
   phase: 'dragging' | 'settling';
+  origin: 'drag' | 'tap';
 };
 
 const CONTROLS_TIMEOUT_MS = 4000;
@@ -107,35 +108,27 @@ function PageCurl({ pdf, page, count, spread, direction, turn, width, height, zo
     : (direction === 'ltr' ? 'right' : 'left');
   const targetIsCover = spread && targetPages.length === 1 && targetPages[0] === 1;
   const portraitBackward = !spread && turn.delta < 0;
-  // A portrait backward turn is an incoming leaf: the previous page opens
-  // from the binding over the current page. This keeps the paper visible and
-  // avoids replacing a real page turn with a fade-out.
-  const frontPage = portraitBackward
-    ? targetPages[0]
-    : turn.delta > 0 ? currentPages[currentPages.length - 1] : currentPages[0];
-  const backPage = portraitBackward
-    ? currentPages[0]
-    : turn.delta > 0 ? targetPages[0] : targetPages[targetPages.length - 1];
+  const frontPage = turn.delta > 0 ? currentPages[currentPages.length - 1] : currentPages[0];
+  const backPage = turn.delta > 0 ? targetPages[0] : targetPages[targetPages.length - 1];
   const underPage = turn.delta > 0 ? targetPages[targetPages.length - 1] : targetPages[0];
-  const hideUnderlay = targetIsCover || portraitBackward;
-  const travel = portraitBackward ? 1 - turn.progress : turn.progress;
+  const hideUnderlay = targetIsCover;
+  const travel = turn.progress;
   const turnSign = (side === 'right' ? -1 : 1) * (!spread && turn.delta < 0 ? -1 : 1);
   const curve = Math.sin(Math.PI * turn.progress);
-  const turnExtent = portraitBackward ? 8 : 180;
-  const incomingShift = portraitBackward ? (side === 'left' ? 1 : -1) * travel * 92 : 0;
-  const liftExtent = portraitBackward ? 2.2 : 5.5;
   const style = {
-    '--reader-curl-angle': `${turnSign * travel * turnExtent}deg`,
-    '--reader-curl-shift': `${incomingShift}%`,
+    '--reader-curl-angle': `${turnSign * travel * 180}deg`,
+    '--reader-curl-edge': `${(1 - turn.progress) * 100}%`,
     '--reader-curl-progress': turn.progress,
     '--reader-curl-curve': curve,
     '--reader-curl-touch-y': `${turn.touchY * 100}%`,
-    '--reader-curl-lift': `${(turn.touchY - .5) * curve * liftExtent}deg`,
+    '--reader-curl-lift': `${(turn.touchY - .5) * curve * 5.5}deg`,
+    '--reader-curl-top-bend': `${curve * 10}px`,
+    '--reader-curl-mid-bend': `${curve * 22}px`,
     '--reader-turn-duration': `${TURN_SETTLE_MS}ms`,
   } as React.CSSProperties;
 
   return <div
-    className={`reader-turn-layer ${spread ? 'is-spread' : 'is-single'} is-${side} is-${turn.delta > 0 ? 'forward' : 'backward'} ${portraitBackward ? 'is-portrait-backward' : ''} ${targetIsCover ? 'is-target-cover' : ''} is-${turn.phase}`}
+    className={`reader-turn-layer ${spread ? 'is-spread' : 'is-single'} is-${side} is-${turn.delta > 0 ? 'forward' : 'backward'} ${portraitBackward ? 'is-portrait-backward' : ''} ${targetIsCover ? 'is-target-cover' : ''} is-${turn.phase} is-${turn.origin}`}
     data-turn-side={side}
     data-turn-axis={side === 'right' ? 'left' : 'right'}
     data-turn-direction={turn.delta > 0 ? 'forward' : 'backward'}
@@ -145,18 +138,20 @@ function PageCurl({ pdf, page, count, spread, direction, turn, width, height, zo
     <div className="reader-turn-underlay">
       {!hideUnderlay && <PageCanvas pdf={pdf} number={underPage} width={width} height={height} zoom={zoom} />}
     </div>
-    <div className="reader-turn-cast-shadow" />
-    <div className="reader-turn-sheet">
-      <div className="reader-turn-face reader-turn-front">
-        <PageCanvas pdf={pdf} number={frontPage} width={width} height={height} zoom={zoom} />
-        <span className="reader-turn-ink-shadow" />
+    {portraitBackward ? <div className="reader-turn-portrait-fold" /> : <>
+      <div className="reader-turn-cast-shadow" />
+      <div className="reader-turn-sheet">
+        <div className="reader-turn-face reader-turn-front">
+          <PageCanvas pdf={pdf} number={frontPage} width={width} height={height} zoom={zoom} />
+          <span className="reader-turn-ink-shadow" />
+        </div>
+        <div className="reader-turn-face reader-turn-back">
+          <PageCanvas pdf={pdf} number={backPage} width={width} height={height} zoom={zoom} />
+          <span className="reader-turn-paper-glow" />
+        </div>
+        <span className="reader-turn-fold" />
       </div>
-      <div className="reader-turn-face reader-turn-back">
-        <PageCanvas pdf={pdf} number={backPage} width={width} height={height} zoom={zoom} />
-        <span className="reader-turn-paper-glow" />
-      </div>
-      <span className="reader-turn-fold" />
-    </div>
+    </>}
   </div>;
 }
 
@@ -264,7 +259,7 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
     if (turnTimer.current !== null) window.clearTimeout(turnTimer.current);
     if (turnFrame.current !== null) window.cancelAnimationFrame(turnFrame.current);
     if (reducedMotion) { move(delta); return; }
-    const initialTurn: TurnState = { delta, progress: 0, touchY: .5, phase: 'settling' };
+    const initialTurn: TurnState = { delta, progress: 0, touchY: .5, phase: 'settling', origin: 'tap' };
     turnRef.current = initialTurn;
     setTurn(initialTurn);
     turnFrame.current = window.requestAnimationFrame(() => {
@@ -368,7 +363,7 @@ export function Reader({ book, onClose, onProgress, onDirectionChange }: ReaderP
           const bounds = event.currentTarget.getBoundingClientRect();
           const touchY = Math.min(.9, Math.max(.1, (event.clientY - bounds.top) / Math.max(1, bounds.height)));
           if (!reducedMotion) {
-            const draggingTurn: TurnState = { delta, progress, touchY, phase: 'dragging' };
+            const draggingTurn: TurnState = { delta, progress, touchY, phase: 'dragging', origin: 'drag' };
             turnRef.current = draggingTurn;
             setTurn(draggingTurn);
           }

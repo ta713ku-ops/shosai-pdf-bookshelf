@@ -146,13 +146,12 @@ describe('Reader immersive controls and gestures', () => {
     expect(backward).toHaveAttribute('data-turn-axis', 'left');
     expect(backward).toHaveClass('is-single');
     expect(backward).toHaveClass('is-portrait-backward');
-    const backwardAngle = parseFloat((backward as HTMLElement).style.getPropertyValue('--reader-curl-angle'));
-    expect(Math.abs(backwardAngle)).toBeGreaterThan(0);
-    expect(Math.abs(backwardAngle)).toBeLessThan(8);
-    expect(parseFloat((backward as HTMLElement).style.getPropertyValue('--reader-curl-shift'))).toBeLessThan(0);
-    expect(backward?.querySelector('.reader-turn-front canvas[aria-label="1ページ"]')).toBeInTheDocument();
-    expect(backward?.querySelector('.reader-turn-back canvas[aria-label="2ページ"]')).toBeInTheDocument();
-    expect(backward?.querySelector('.reader-turn-underlay canvas')).not.toBeInTheDocument();
+    const backwardEdge = parseFloat((backward as HTMLElement).style.getPropertyValue('--reader-curl-edge'));
+    expect(backwardEdge).toBeGreaterThan(0);
+    expect(backwardEdge).toBeLessThan(100);
+    expect(backward?.querySelector('.reader-turn-sheet')).not.toBeInTheDocument();
+    expect(backward?.querySelector('.reader-turn-portrait-fold')).toBeInTheDocument();
+    expect(backward?.querySelector('.reader-turn-underlay canvas[aria-label="1ページ"]')).toBeInTheDocument();
   });
 
   it('mirrors the incoming portrait back turn for a right-opening book', async () => {
@@ -162,17 +161,25 @@ describe('Reader immersive controls and gestures', () => {
     await waitFor(() => expect(screen.queryByText('本を開いています…')).not.toBeInTheDocument());
     const stage = screen.getByRole('dialog').querySelector('.reader-stage') as HTMLElement;
 
-    fireEvent.pointerDown(stage, { pointerId: 1, clientX: 640, clientY: 560 });
-    fireEvent.pointerMove(stage, { pointerId: 1, clientX: 360, clientY: 560 });
+    fireEvent.pointerDown(stage, { pointerId: 1, clientX: 180, clientY: 560 });
+    fireEvent.pointerMove(stage, { pointerId: 1, clientX: 460, clientY: 560 });
+    const forward = stage.querySelector('.reader-turn-layer');
+    expect(forward).toHaveAttribute('data-turn-direction', 'forward');
+    expect(forward).toHaveAttribute('data-turn-side', 'left');
+    expect(forward).toHaveAttribute('data-turn-axis', 'right');
+    fireEvent.pointerCancel(stage, { pointerId: 1 });
+    act(() => vi.advanceTimersByTime(1200));
+
+    fireEvent.pointerDown(stage, { pointerId: 2, clientX: 640, clientY: 560 });
+    fireEvent.pointerMove(stage, { pointerId: 2, clientX: 360, clientY: 560 });
     const backward = stage.querySelector('.reader-turn-layer') as HTMLElement;
 
     expect(backward).toHaveAttribute('data-turn-direction', 'backward');
     expect(backward).toHaveAttribute('data-turn-side', 'left');
     expect(backward).toHaveAttribute('data-turn-axis', 'right');
-    expect(parseFloat(backward.style.getPropertyValue('--reader-curl-angle'))).toBeLessThan(0);
-    expect(parseFloat(backward.style.getPropertyValue('--reader-curl-shift'))).toBeGreaterThan(0);
-    expect(backward.querySelector('.reader-turn-front canvas[aria-label="1ページ"]')).toBeInTheDocument();
-    expect(backward.querySelector('.reader-turn-underlay canvas')).not.toBeInTheDocument();
+    expect(backward.querySelector('.reader-turn-sheet')).not.toBeInTheDocument();
+    expect(backward.querySelector('.reader-turn-portrait-fold')).toBeInTheDocument();
+    expect(backward.querySelector('.reader-turn-underlay canvas[aria-label="1ページ"]')).toBeInTheDocument();
   });
 
   it.each([

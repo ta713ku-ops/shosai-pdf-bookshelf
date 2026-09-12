@@ -187,20 +187,20 @@ def capture_browser_frames() -> None:
           const started = performance.now();
           const sample = () => {
             const layer = document.querySelector('.reader-turn-layer');
-            const sheet = layer?.querySelector('.reader-turn-sheet');
-            const style = sheet ? getComputedStyle(sheet) : null;
-            const layerRect = layer?.getBoundingClientRect();
-            const sheetRect = sheet?.getBoundingClientRect();
+            const fold = layer?.querySelector('.reader-turn-portrait-fold');
+            const underlay = layer?.querySelector('.reader-turn-underlay');
+            const target = underlay?.querySelector('.reader-page');
+            const foldRect = fold?.getBoundingClientRect();
+            const targetRect = target?.getBoundingClientRect();
             window.__portraitTurnFrames.push({
               elapsed: performance.now() - started,
               hasTurn: Boolean(layer),
               messageCount: document.querySelectorAll('.reader-turn-layer .reader-page-message').length,
-              width: sheetRect?.width ?? 0,
-              visibleWidth: layerRect && sheetRect
-                ? Math.max(0, Math.min(layerRect.right, sheetRect.right) - Math.max(layerRect.left, sheetRect.left))
-                : 0,
-              opacity: style ? Number(style.opacity) : 0,
-              transform: style?.transform ?? 'none',
+              hasFold: Boolean(fold),
+              foldCenter: foldRect ? foldRect.left + foldRect.width / 2 : 0,
+              targetLeft: targetRect?.left ?? 0,
+              targetWidth: targetRect?.width ?? 0,
+              clipPath: underlay ? getComputedStyle(underlay).clipPath : 'none',
             });
             if (performance.now() - started < 1500) requestAnimationFrame(sample);
           };
@@ -217,17 +217,18 @@ def capture_browser_frames() -> None:
         active_frames = [frame for frame in portrait_frames if frame["hasTurn"]]
         if len(active_frames) < 30:
             raise AssertionError(f"Portrait backward animation disappeared too early: {len(active_frames)} frames")
-        transforms = {frame["transform"] for frame in active_frames if frame["transform"] != "none"}
-        if len(transforms) < 8:
-            raise AssertionError("Portrait backward animation did not visibly progress")
-        if any(frame["opacity"] < .99 for frame in active_frames):
-            raise AssertionError("Portrait backward page faded out instead of turning into view")
-        widths = [frame["width"] for frame in active_frames]
-        visible_widths = [frame["visibleWidth"] for frame in active_frames]
-        if min(widths) < 730:
-            raise AssertionError("Portrait backward page warped too heavily during its return")
-        if min(visible_widths) > 300 or max(visible_widths) < 740 or visible_widths[-1] <= visible_widths[0]:
-            raise AssertionError(f"Portrait backward page did not slide continuously from the binding: {visible_widths[0]:.1f} -> {visible_widths[-1]:.1f}")
+        if not all(frame["hasFold"] for frame in active_frames):
+            raise AssertionError("Portrait backward turn lost its paper fold during the animation")
+        fold_centers = [frame["foldCenter"] for frame in active_frames]
+        if max(fold_centers) - min(fold_centers) < 650:
+            raise AssertionError("Portrait backward fold did not travel across the page")
+        clip_paths = {frame["clipPath"] for frame in active_frames if frame["clipPath"] != "none"}
+        if len(clip_paths) < 8:
+            raise AssertionError("Portrait backward page reveal did not follow the paper fold")
+        target_lefts = [frame["targetLeft"] for frame in active_frames]
+        target_widths = [frame["targetWidth"] for frame in active_frames]
+        if max(target_lefts) - min(target_lefts) > 2 or min(target_widths) < 780:
+            raise AssertionError("Portrait backward target page slid or warped instead of staying anchored")
         page.locator('.reader-pages[data-visible-pages="1"]').wait_for(timeout=5_000)
 
         # Mirror the incoming portrait page for the default right-opening mode.
@@ -238,14 +239,16 @@ def capture_browser_frames() -> None:
         page.mouse.click(795, 590)
         rtl_backward = page.locator('.reader-turn-layer.is-portrait-backward[data-turn-side="left"]')
         rtl_backward.wait_for(timeout=5_000)
-        if rtl_backward.locator('.reader-turn-front canvas[aria-label="1ページ"]').count() != 1:
-            raise AssertionError("The right-opening portrait return did not animate the previous page")
-        if rtl_backward.locator('.reader-turn-underlay canvas').count():
-            raise AssertionError("The right-opening portrait return hid its animation under a duplicate page")
+        if rtl_backward.get_attribute('data-turn-axis') != 'right':
+            raise AssertionError("The right-opening portrait return used a different binding axis")
+        if rtl_backward.locator('.reader-turn-underlay canvas[aria-label="1ページ"]').count() != 1:
+            raise AssertionError("The right-opening portrait return did not reveal the previous page")
+        if rtl_backward.locator('.reader-turn-sheet').count():
+            raise AssertionError("The right-opening portrait return fell back to a sliding page plane")
+        if rtl_backward.locator('.reader-turn-portrait-fold').count() != 1:
+            raise AssertionError("The right-opening portrait return did not render its paper fold")
         page.wait_for_timeout(500)
         page.screenshot(path="/tmp/shosai-portrait-backward-rtl.png")
-        if float(rtl_backward.locator('.reader-turn-sheet').evaluate("element => getComputedStyle(element).opacity")) < .99:
-            raise AssertionError("The right-opening portrait return faded out")
         page.wait_for_timeout(850)
         page.locator('.reader-pages[data-visible-pages="1"]').wait_for(timeout=5_000)
         browser.close()
