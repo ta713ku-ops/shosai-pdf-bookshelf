@@ -238,7 +238,7 @@
 }
 
 .reader-turn-layer.is-portrait-backward.is-right .reader-turn-portrait-fold {
-  left: calc(100% - var(--reader-curl-edge));
+  left: calc(100% - var(--reader-curl-edge) + var(--reader-curl-mid-bend));
   transform: translateX(-50%) rotateZ(var(--reader-curl-lift));
 }
 
@@ -248,7 +248,7 @@
 }
 
 .reader-turn-layer.is-portrait-backward.is-left .reader-turn-portrait-fold {
-  right: calc(100% - var(--reader-curl-edge));
+  right: calc(100% - var(--reader-curl-edge) + var(--reader-curl-mid-bend));
   transform: translateX(50%) rotateZ(var(--reader-curl-lift));
 }
 
@@ -274,6 +274,18 @@
   animation: reader-portrait-reveal-left var(--reader-turn-duration, 1200ms) cubic-bezier(.32, .06, .18, 1) both;
 }
 
+.reader-turn-layer.is-portrait-backward.is-settling.is-tap.is-right .reader-turn-portrait-fold {
+  animation:
+    reader-portrait-fold-depth var(--reader-turn-duration, 1200ms) ease-in-out both,
+    reader-portrait-fold-travel-right var(--reader-turn-duration, 1200ms) cubic-bezier(.32, .06, .18, 1) both;
+}
+
+.reader-turn-layer.is-portrait-backward.is-settling.is-tap.is-left .reader-turn-portrait-fold {
+  animation:
+    reader-portrait-fold-depth var(--reader-turn-duration, 1200ms) ease-in-out both,
+    reader-portrait-fold-travel-left var(--reader-turn-duration, 1200ms) cubic-bezier(.32, .06, .18, 1) both;
+}
+
 @keyframes reader-portrait-reveal-right {
   0% { clip-path: polygon(0 0, 0 0, 0 50%, 0 100%, 0 100%); }
   18% { clip-path: polygon(0 0, 8% 0, 13% 50%, 7% 100%, 0 100%); }
@@ -290,6 +302,24 @@
   72% { clip-path: polygon(32% 0, 100% 0, 20% 50%, 29% 100%, 100% 100%); }
   92% { clip-path: polygon(6% 0, 100% 0, 2% 50%, 5% 100%, 100% 100%); }
   100% { clip-path: polygon(0 0, 100% 0, 0 50%, 0 100%, 100% 100%); }
+}
+
+@keyframes reader-portrait-fold-travel-right {
+  0% { left: 0; }
+  18% { left: 13%; }
+  45% { left: 49%; }
+  72% { left: 80%; }
+  92% { left: 98%; }
+  100% { left: 100%; }
+}
+
+@keyframes reader-portrait-fold-travel-left {
+  0% { right: 0; }
+  18% { right: 13%; }
+  45% { right: 49%; }
+  72% { right: 80%; }
+  92% { right: 98%; }
+  100% { right: 100%; }
 }
 
 @keyframes reader-portrait-fold-depth {

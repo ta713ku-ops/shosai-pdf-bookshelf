@@ -191,13 +191,24 @@ def capture_browser_frames() -> None:
             const underlay = layer?.querySelector('.reader-turn-underlay');
             const target = underlay?.querySelector('.reader-page');
             const foldRect = fold?.getBoundingClientRect();
+            const underlayRect = underlay?.getBoundingClientRect();
             const targetRect = target?.getBoundingClientRect();
+            const clipPath = underlay ? getComputedStyle(underlay).clipPath : 'none';
+            const points = clipPath.startsWith('polygon(')
+              ? clipPath.slice(8, -1).split(',').map(point => point.trim().split(/\s+/)[0])
+              : [];
+            const midpointX = points[2] && underlayRect
+              ? (points[2].endsWith('%') ? Number.parseFloat(points[2]) * underlayRect.width / 100 : Number.parseFloat(points[2]))
+              : null;
+            const foldCenter = foldRect ? foldRect.left + foldRect.width / 2 : null;
+            const revealEdge = midpointX === null || !underlayRect ? null : underlayRect.left + midpointX;
             window.__portraitTurnFrames.push({
               elapsed: performance.now() - started,
               hasTurn: Boolean(layer),
               messageCount: document.querySelectorAll('.reader-turn-layer .reader-page-message').length,
               hasFold: Boolean(fold),
-              foldCenter: foldRect ? foldRect.left + foldRect.width / 2 : 0,
+              foldCenter: foldCenter ?? 0,
+              edgeGap: foldCenter === null || revealEdge === null ? 0 : Math.abs(foldCenter - revealEdge),
               targetLeft: targetRect?.left ?? 0,
               targetWidth: targetRect?.width ?? 0,
               clipPath: underlay ? getComputedStyle(underlay).clipPath : 'none',
@@ -222,6 +233,10 @@ def capture_browser_frames() -> None:
         fold_centers = [frame["foldCenter"] for frame in active_frames]
         if max(fold_centers) - min(fold_centers) < 650:
             raise AssertionError("Portrait backward fold did not travel across the page")
+        edge_gaps = [frame["edgeGap"] for frame in active_frames]
+        if max(edge_gaps) > 14:
+            raise AssertionError(f"Portrait backward fold detached from the revealed page edge: {max(edge_gaps):.1f}px")
+        print(f"Portrait backward fold/reveal edge gap: {max(edge_gaps):.1f}px")
         clip_paths = {frame["clipPath"] for frame in active_frames if frame["clipPath"] != "none"}
         if len(clip_paths) < 8:
             raise AssertionError("Portrait backward page reveal did not follow the paper fold")
