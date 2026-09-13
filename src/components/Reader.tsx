@@ -107,7 +107,7 @@ function PageCurl({ pdf, page, count, spread, direction, turn, width, height, zo
     ? (((turn.delta > 0) === (direction === 'ltr')) ? 'right' : 'left')
     : (direction === 'ltr' ? 'right' : 'left');
   const targetIsCover = spread && targetPages.length === 1 && targetPages[0] === 1;
-  const portraitBackward = !spread && turn.delta < 0;
+  const portraitTurn = !spread;
   const frontPage = turn.delta > 0 ? currentPages[currentPages.length - 1] : currentPages[0];
   const backPage = turn.delta > 0 ? targetPages[0] : targetPages[targetPages.length - 1];
   const underPage = turn.delta > 0 ? targetPages[targetPages.length - 1] : targetPages[0];
@@ -126,7 +126,7 @@ function PageCurl({ pdf, page, count, spread, direction, turn, width, height, zo
   } as React.CSSProperties;
 
   return <div
-    className={`reader-turn-layer ${spread ? 'is-spread' : 'is-single'} is-${side} is-${turn.delta > 0 ? 'forward' : 'backward'} ${portraitBackward ? 'is-portrait-backward' : ''} ${targetIsCover ? 'is-target-cover' : ''} is-${turn.phase} is-${turn.origin}`}
+    className={`reader-turn-layer ${spread ? 'is-spread' : 'is-single'} is-${side} is-${turn.delta > 0 ? 'forward' : 'backward'} ${portraitTurn ? 'is-portrait-turn' : ''} ${targetIsCover ? 'is-target-cover' : ''} is-${turn.phase} is-${turn.origin}`}
     data-turn-side={side}
     data-turn-axis={side === 'right' ? 'left' : 'right'}
     data-turn-direction={turn.delta > 0 ? 'forward' : 'backward'}
@@ -136,7 +136,7 @@ function PageCurl({ pdf, page, count, spread, direction, turn, width, height, zo
     <div className="reader-turn-underlay">
       {!hideUnderlay && <PageCanvas pdf={pdf} number={underPage} width={width} height={height} zoom={zoom} />}
     </div>
-    {portraitBackward ? <div className="reader-turn-portrait-fold" /> : <>
+    {portraitTurn ? <div className="reader-turn-portrait-fold" /> : <>
       <div className="reader-turn-cast-shadow" />
       <div className="reader-turn-sheet">
         <div className="reader-turn-face reader-turn-front">

@@ -167,6 +167,14 @@ def capture_browser_frames() -> None:
         page.mouse.move(620, 590, steps=4)
         portrait_forward = page.locator('.reader-turn-layer[data-turn-direction="forward"][data-turn-axis="left"].is-single')
         portrait_forward.wait_for(timeout=5_000)
+        if not portrait_forward.evaluate("element => element.classList.contains('is-portrait-turn')"):
+            raise AssertionError("Portrait forward turn did not use the shared paper-fold model")
+        if portrait_forward.locator('.reader-turn-sheet').count():
+            raise AssertionError("Portrait forward turn fell back to the separate 3D sheet model")
+        if portrait_forward.locator('.reader-turn-portrait-fold').count() != 1:
+            raise AssertionError("Portrait forward turn did not render the shared paper fold")
+        if portrait_forward.locator('.reader-turn-underlay canvas[aria-label="3ページ"]').count() != 1:
+            raise AssertionError("Portrait forward turn did not uncover the next page")
         page.mouse.up()
         page.wait_for_timeout(1300)
 
@@ -175,6 +183,8 @@ def capture_browser_frames() -> None:
         page.mouse.move(200, 590, steps=4)
         portrait_backward = page.locator('.reader-turn-layer[data-turn-direction="backward"][data-turn-axis="left"].is-single')
         portrait_backward.wait_for(timeout=5_000)
+        if not portrait_backward.evaluate("element => element.classList.contains('is-portrait-turn')"):
+            raise AssertionError("Portrait backward turn did not use the shared paper-fold model")
         if page.locator('.reader-turn-layer .reader-page-message:visible').count():
             raise AssertionError("Cached portrait pages flashed a loading placeholder when turning back")
         page.mouse.up()
@@ -257,6 +267,32 @@ def capture_browser_frames() -> None:
         if max(target_lefts) - min(target_lefts) > 2 or min(target_widths) < 780:
             raise AssertionError("Portrait backward target page slid or warped instead of staying anchored")
         page.locator('.reader-pages[data-visible-pages="1"]').wait_for(timeout=5_000)
+        page.get_by_role("img", name="1ページ").wait_for(timeout=5_000)
+        if page.locator(".reader-page-message:visible").count():
+            raise AssertionError("Portrait backward turn left a loading placeholder after completion")
+
+        # The forward tap must now be the same fold/reveal motion in reverse.
+        page.mouse.click(795, 590)
+        shared_forward = page.locator('.reader-turn-layer.is-portrait-turn.is-forward[data-turn-axis="left"]')
+        shared_forward.wait_for(timeout=5_000)
+        page.wait_for_timeout(500)
+        if shared_forward.locator('.reader-turn-sheet').count():
+            raise AssertionError("Portrait forward and backward turns still used different renderers")
+        page.screenshot(path="/tmp/shosai-portrait-forward.png")
+        page.wait_for_timeout(850)
+        page.locator('.reader-pages[data-visible-pages="2"]').wait_for(timeout=5_000)
+
+        # Repeated taps during both portrait directions must not interrupt the
+        # shared settling animation or leave its fold layer behind.
+        for expected, x in (("1", 25), ("2", 795)):
+            for _ in range(12):
+                page.mouse.click(x, 590)
+            page.wait_for_timeout(1400)
+            visible_pages = page.locator(".reader-pages").get_attribute("data-visible-pages")
+            if visible_pages != expected or page.locator(".reader-turn-layer").count():
+                raise AssertionError(f"Rapid portrait taps stranded the shared turn: expected={expected!r} visible={visible_pages!r}")
+            if page.locator(".reader-page-message:visible").count():
+                raise AssertionError(f"Loading remained after rapid portrait taps to {expected}")
 
         # Mirror the incoming portrait page for the default right-opening mode.
         page.locator(".reader-stage").click(position={"x": 410, "y": 590})
@@ -264,7 +300,7 @@ def capture_browser_frames() -> None:
         page.get_by_label("本の開き方向").select_option("rtl")
         page.get_by_role("button", name="操作パネルを隠す").click()
         page.mouse.click(795, 590)
-        rtl_backward = page.locator('.reader-turn-layer.is-portrait-backward[data-turn-side="left"]')
+        rtl_backward = page.locator('.reader-turn-layer.is-portrait-turn.is-backward[data-turn-side="left"]')
         rtl_backward.wait_for(timeout=5_000)
         if rtl_backward.get_attribute('data-turn-axis') != 'right':
             raise AssertionError("The right-opening portrait return used a different binding axis")

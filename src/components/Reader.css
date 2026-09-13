@@ -182,20 +182,22 @@
   box-shadow: none;
 }
 
-/* In portrait, returning to the previous page reveals a stationary sheet from
-   the binding while a curved fold travels across it. The page content itself
-   never slides, so the motion reads as paper opening rather than a carousel. */
-.reader-turn-layer.is-portrait-backward .reader-turn-underlay {
+/* Portrait turns use one physical model in both directions: a stationary
+   target page is uncovered by a travelling paper fold. Forward and backward
+   are exact directional mirrors around the same binding edge. */
+.reader-turn-layer.is-portrait-turn .reader-turn-underlay {
   background: #fdfcf9;
   box-shadow: inset 0 0 24px rgba(58, 47, 34, .14);
   will-change: clip-path;
 }
 
-.reader-turn-layer.is-portrait-backward.is-right .reader-turn-underlay {
+.reader-turn-layer.is-portrait-turn.is-forward.is-left .reader-turn-underlay,
+.reader-turn-layer.is-portrait-turn.is-backward.is-right .reader-turn-underlay {
   clip-path: inset(0 var(--reader-curl-edge) 0 0);
 }
 
-.reader-turn-layer.is-portrait-backward.is-left .reader-turn-underlay {
+.reader-turn-layer.is-portrait-turn.is-forward.is-right .reader-turn-underlay,
+.reader-turn-layer.is-portrait-turn.is-backward.is-left .reader-turn-underlay {
   clip-path: inset(0 0 0 var(--reader-curl-edge));
 }
 
@@ -225,35 +227,47 @@
   filter: blur(1.4px);
 }
 
-.reader-turn-layer.is-portrait-backward.is-right .reader-turn-portrait-fold {
+.reader-turn-layer.is-portrait-turn.is-forward.is-right .reader-turn-portrait-fold {
+  left: var(--reader-curl-edge);
+  transform: translateX(-50%) rotateZ(var(--reader-curl-lift));
+}
+
+.reader-turn-layer.is-portrait-turn.is-backward.is-right .reader-turn-portrait-fold {
   left: calc(100% - var(--reader-curl-edge));
   transform: translateX(-50%) rotateZ(var(--reader-curl-lift));
 }
 
-.reader-turn-layer.is-portrait-backward.is-right .reader-turn-portrait-fold::before {
+.reader-turn-layer.is-portrait-turn.is-backward.is-right .reader-turn-portrait-fold::before,
+.reader-turn-layer.is-portrait-turn.is-forward.is-left .reader-turn-portrait-fold::before {
   background: linear-gradient(90deg, rgba(255, 255, 255, .08), rgba(255, 253, 245, .94) 29%, rgba(91, 72, 51, .38) 51%, rgba(255, 255, 255, .82) 68%, rgba(29, 22, 15, .3));
   box-shadow: -16px 0 23px rgba(255, 255, 255, .25), 18px 0 28px rgba(0, 0, 0, .28);
 }
 
-.reader-turn-layer.is-portrait-backward.is-left .reader-turn-portrait-fold {
+.reader-turn-layer.is-portrait-turn.is-forward.is-left .reader-turn-portrait-fold {
+  right: var(--reader-curl-edge);
+  transform: translateX(50%) rotateZ(var(--reader-curl-lift));
+}
+
+.reader-turn-layer.is-portrait-turn.is-backward.is-left .reader-turn-portrait-fold {
   right: calc(100% - var(--reader-curl-edge));
   transform: translateX(50%) rotateZ(var(--reader-curl-lift));
 }
 
-.reader-turn-layer.is-portrait-backward.is-left .reader-turn-portrait-fold::before {
+.reader-turn-layer.is-portrait-turn.is-forward.is-right .reader-turn-portrait-fold::before,
+.reader-turn-layer.is-portrait-turn.is-backward.is-left .reader-turn-portrait-fold::before {
   background: linear-gradient(270deg, rgba(255, 255, 255, .08), rgba(255, 253, 245, .94) 29%, rgba(91, 72, 51, .38) 51%, rgba(255, 255, 255, .82) 68%, rgba(29, 22, 15, .3));
   box-shadow: 16px 0 23px rgba(255, 255, 255, .25), -18px 0 28px rgba(0, 0, 0, .28);
 }
 
-.reader-turn-layer.is-portrait-backward.is-settling .reader-turn-underlay {
+.reader-turn-layer.is-portrait-turn.is-settling .reader-turn-underlay {
   transition: clip-path var(--reader-turn-duration, 1200ms) cubic-bezier(.32, .06, .18, 1);
 }
 
-.reader-turn-layer.is-portrait-backward.is-settling .reader-turn-portrait-fold {
+.reader-turn-layer.is-portrait-turn.is-settling .reader-turn-portrait-fold {
   transition: left var(--reader-turn-duration, 1200ms) cubic-bezier(.32, .06, .18, 1), right var(--reader-turn-duration, 1200ms) cubic-bezier(.32, .06, .18, 1), transform var(--reader-turn-duration, 1200ms) ease, width var(--reader-turn-duration, 1200ms) ease;
 }
 
-.reader-turn-layer.is-portrait-backward.is-settling.is-tap .reader-turn-portrait-fold {
+.reader-turn-layer.is-portrait-turn.is-settling.is-tap .reader-turn-portrait-fold {
   animation: reader-portrait-fold-depth var(--reader-turn-duration, 1200ms) ease-in-out both;
 }
 

@@ -123,7 +123,7 @@ describe('Reader immersive controls and gestures', () => {
     expect(curl).toHaveAttribute('data-turn-side', 'left');
   });
 
-  it('uses one binding axis for both directions in portrait', async () => {
+  it('uses one binding axis and one paper-fold model for both directions in portrait', async () => {
     vi.stubGlobal('innerWidth', 820);
     vi.stubGlobal('innerHeight', 1180);
     render(<Reader book={{ ...book, progress: 2, direction: 'ltr' }} onClose={vi.fn()} onProgress={vi.fn()} onDirectionChange={vi.fn()} />);
@@ -136,6 +136,10 @@ describe('Reader immersive controls and gestures', () => {
     expect(forward).toHaveAttribute('data-turn-direction', 'forward');
     expect(forward).toHaveAttribute('data-turn-axis', 'left');
     expect(forward).toHaveClass('is-single');
+    expect(forward).toHaveClass('is-portrait-turn');
+    expect(forward?.querySelector('.reader-turn-sheet')).not.toBeInTheDocument();
+    expect(forward?.querySelector('.reader-turn-portrait-fold')).toBeInTheDocument();
+    expect(forward?.querySelector('.reader-turn-underlay canvas[aria-label="3ページ"]')).toBeInTheDocument();
     fireEvent.pointerCancel(stage, { pointerId: 1 });
     act(() => vi.advanceTimersByTime(1200));
 
@@ -145,7 +149,7 @@ describe('Reader immersive controls and gestures', () => {
     expect(backward).toHaveAttribute('data-turn-direction', 'backward');
     expect(backward).toHaveAttribute('data-turn-axis', 'left');
     expect(backward).toHaveClass('is-single');
-    expect(backward).toHaveClass('is-portrait-backward');
+    expect(backward).toHaveClass('is-portrait-turn');
     const backwardEdge = parseFloat((backward as HTMLElement).style.getPropertyValue('--reader-curl-edge'));
     expect(backwardEdge).toBeGreaterThan(0);
     expect(backwardEdge).toBeLessThan(100);
@@ -154,7 +158,7 @@ describe('Reader immersive controls and gestures', () => {
     expect(backward?.querySelector('.reader-turn-underlay canvas[aria-label="1ページ"]')).toBeInTheDocument();
   });
 
-  it('mirrors the incoming portrait back turn for a right-opening book', async () => {
+  it('mirrors the shared portrait paper-fold model for a right-opening book', async () => {
     vi.stubGlobal('innerWidth', 820);
     vi.stubGlobal('innerHeight', 1180);
     render(<Reader book={{ ...book, progress: 2, direction: 'rtl' }} onClose={vi.fn()} onProgress={vi.fn()} onDirectionChange={vi.fn()} />);
@@ -167,6 +171,10 @@ describe('Reader immersive controls and gestures', () => {
     expect(forward).toHaveAttribute('data-turn-direction', 'forward');
     expect(forward).toHaveAttribute('data-turn-side', 'left');
     expect(forward).toHaveAttribute('data-turn-axis', 'right');
+    expect(forward).toHaveClass('is-portrait-turn');
+    expect(forward?.querySelector('.reader-turn-sheet')).not.toBeInTheDocument();
+    expect(forward?.querySelector('.reader-turn-portrait-fold')).toBeInTheDocument();
+    expect(forward?.querySelector('.reader-turn-underlay canvas[aria-label="3ページ"]')).toBeInTheDocument();
     fireEvent.pointerCancel(stage, { pointerId: 1 });
     act(() => vi.advanceTimersByTime(1200));
 
@@ -177,6 +185,7 @@ describe('Reader immersive controls and gestures', () => {
     expect(backward).toHaveAttribute('data-turn-direction', 'backward');
     expect(backward).toHaveAttribute('data-turn-side', 'left');
     expect(backward).toHaveAttribute('data-turn-axis', 'right');
+    expect(backward).toHaveClass('is-portrait-turn');
     expect(backward.querySelector('.reader-turn-sheet')).not.toBeInTheDocument();
     expect(backward.querySelector('.reader-turn-portrait-fold')).toBeInTheDocument();
     expect(backward.querySelector('.reader-turn-underlay canvas[aria-label="1ページ"]')).toBeInTheDocument();
