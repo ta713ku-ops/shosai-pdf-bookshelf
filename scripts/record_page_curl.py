@@ -194,14 +194,24 @@ def capture_browser_frames() -> None:
             const underlayRect = underlay?.getBoundingClientRect();
             const targetRect = target?.getBoundingClientRect();
             const clipPath = underlay ? getComputedStyle(underlay).clipPath : 'none';
-            const points = clipPath.startsWith('polygon(')
-              ? clipPath.slice(8, -1).split(',').map(point => point.trim().split(/\s+/)[0])
+            const insetValues = clipPath.startsWith('inset(')
+              ? clipPath.slice(6, -1).trim().split(/\s+/)
               : [];
-            const midpointX = points[2] && underlayRect
-              ? (points[2].endsWith('%') ? Number.parseFloat(points[2]) * underlayRect.width / 100 : Number.parseFloat(points[2]))
-              : null;
+            const toPixels = (value) => {
+              if (!underlayRect || !value) return 0;
+              return value.endsWith('%')
+                ? Number.parseFloat(value) * underlayRect.width / 100
+                : Number.parseFloat(value);
+            };
+            const horizontalInset = insetValues.length === 1 ? insetValues[0] : insetValues[1];
+            const leftInset = insetValues.length >= 4 ? insetValues[3] : horizontalInset;
+            const rightInset = horizontalInset;
+            const revealEdge = !underlayRect || !insetValues.length
+              ? null
+              : underlayRect.left + (layer?.classList.contains('is-right')
+                ? underlayRect.width - toPixels(rightInset)
+                : toPixels(leftInset));
             const foldCenter = foldRect ? foldRect.left + foldRect.width / 2 : null;
-            const revealEdge = midpointX === null || !underlayRect ? null : underlayRect.left + midpointX;
             window.__portraitTurnFrames.push({
               elapsed: performance.now() - started,
               hasTurn: Boolean(layer),
@@ -230,6 +240,8 @@ def capture_browser_frames() -> None:
             raise AssertionError(f"Portrait backward animation disappeared too early: {len(active_frames)} frames")
         if not all(frame["hasFold"] for frame in active_frames):
             raise AssertionError("Portrait backward turn lost its paper fold during the animation")
+        if any(not frame["clipPath"].startswith("inset(") for frame in active_frames):
+            raise AssertionError("Portrait backward turn used a polygon that can tear the page into triangular fragments")
         fold_centers = [frame["foldCenter"] for frame in active_frames]
         if max(fold_centers) - min(fold_centers) < 650:
             raise AssertionError("Portrait backward fold did not travel across the page")

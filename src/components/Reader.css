@@ -192,23 +192,11 @@
 }
 
 .reader-turn-layer.is-portrait-backward.is-right .reader-turn-underlay {
-  clip-path: polygon(
-    0 0,
-    calc(100% - var(--reader-curl-edge) - var(--reader-curl-top-bend)) 0,
-    calc(100% - var(--reader-curl-edge) + var(--reader-curl-mid-bend)) var(--reader-curl-touch-y),
-    calc(100% - var(--reader-curl-edge) - var(--reader-curl-top-bend)) 100%,
-    0 100%
-  );
+  clip-path: inset(0 var(--reader-curl-edge) 0 0);
 }
 
 .reader-turn-layer.is-portrait-backward.is-left .reader-turn-underlay {
-  clip-path: polygon(
-    calc(var(--reader-curl-edge) + var(--reader-curl-top-bend)) 0,
-    100% 0,
-    calc(var(--reader-curl-edge) - var(--reader-curl-mid-bend)) var(--reader-curl-touch-y),
-    calc(var(--reader-curl-edge) + var(--reader-curl-top-bend)) 100%,
-    100% 100%
-  );
+  clip-path: inset(0 0 0 var(--reader-curl-edge));
 }
 
 .reader-turn-portrait-fold {
@@ -216,7 +204,7 @@
   z-index: 3;
   top: -1%;
   bottom: -1%;
-  width: calc(36px + var(--reader-curl-curve) * 54px);
+  width: calc(24px + var(--reader-curl-curve) * 36px);
   pointer-events: none;
   opacity: .96;
   filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .2));
@@ -238,7 +226,7 @@
 }
 
 .reader-turn-layer.is-portrait-backward.is-right .reader-turn-portrait-fold {
-  left: calc(100% - var(--reader-curl-edge) + var(--reader-curl-mid-bend));
+  left: calc(100% - var(--reader-curl-edge));
   transform: translateX(-50%) rotateZ(var(--reader-curl-lift));
 }
 
@@ -248,7 +236,7 @@
 }
 
 .reader-turn-layer.is-portrait-backward.is-left .reader-turn-portrait-fold {
-  right: calc(100% - var(--reader-curl-edge) + var(--reader-curl-mid-bend));
+  right: calc(100% - var(--reader-curl-edge));
   transform: translateX(50%) rotateZ(var(--reader-curl-lift));
 }
 
@@ -262,71 +250,18 @@
 }
 
 .reader-turn-layer.is-portrait-backward.is-settling .reader-turn-portrait-fold {
-  transition: left var(--reader-turn-duration, 1200ms) cubic-bezier(.32, .06, .18, 1), right var(--reader-turn-duration, 1200ms) cubic-bezier(.32, .06, .18, 1), transform var(--reader-turn-duration, 1200ms) ease;
+  transition: left var(--reader-turn-duration, 1200ms) cubic-bezier(.32, .06, .18, 1), right var(--reader-turn-duration, 1200ms) cubic-bezier(.32, .06, .18, 1), transform var(--reader-turn-duration, 1200ms) ease, width var(--reader-turn-duration, 1200ms) ease;
+}
+
+.reader-turn-layer.is-portrait-backward.is-settling.is-tap .reader-turn-portrait-fold {
   animation: reader-portrait-fold-depth var(--reader-turn-duration, 1200ms) ease-in-out both;
 }
 
-.reader-turn-layer.is-portrait-backward.is-settling.is-tap.is-right .reader-turn-underlay {
-  animation: reader-portrait-reveal-right var(--reader-turn-duration, 1200ms) cubic-bezier(.32, .06, .18, 1) both;
-}
-
-.reader-turn-layer.is-portrait-backward.is-settling.is-tap.is-left .reader-turn-underlay {
-  animation: reader-portrait-reveal-left var(--reader-turn-duration, 1200ms) cubic-bezier(.32, .06, .18, 1) both;
-}
-
-.reader-turn-layer.is-portrait-backward.is-settling.is-tap.is-right .reader-turn-portrait-fold {
-  animation:
-    reader-portrait-fold-depth var(--reader-turn-duration, 1200ms) ease-in-out both,
-    reader-portrait-fold-travel-right var(--reader-turn-duration, 1200ms) cubic-bezier(.32, .06, .18, 1) both;
-}
-
-.reader-turn-layer.is-portrait-backward.is-settling.is-tap.is-left .reader-turn-portrait-fold {
-  animation:
-    reader-portrait-fold-depth var(--reader-turn-duration, 1200ms) ease-in-out both,
-    reader-portrait-fold-travel-left var(--reader-turn-duration, 1200ms) cubic-bezier(.32, .06, .18, 1) both;
-}
-
-@keyframes reader-portrait-reveal-right {
-  0% { clip-path: polygon(0 0, 0 0, 0 50%, 0 100%, 0 100%); }
-  18% { clip-path: polygon(0 0, 8% 0, 13% 50%, 7% 100%, 0 100%); }
-  45% { clip-path: polygon(0 0, 35% 0, 49% 50%, 37% 100%, 0 100%); }
-  72% { clip-path: polygon(0 0, 68% 0, 80% 50%, 71% 100%, 0 100%); }
-  92% { clip-path: polygon(0 0, 94% 0, 98% 50%, 95% 100%, 0 100%); }
-  100% { clip-path: polygon(0 0, 100% 0, 100% 50%, 100% 100%, 0 100%); }
-}
-
-@keyframes reader-portrait-reveal-left {
-  0% { clip-path: polygon(100% 0, 100% 0, 100% 50%, 100% 100%, 100% 100%); }
-  18% { clip-path: polygon(92% 0, 100% 0, 87% 50%, 93% 100%, 100% 100%); }
-  45% { clip-path: polygon(65% 0, 100% 0, 51% 50%, 63% 100%, 100% 100%); }
-  72% { clip-path: polygon(32% 0, 100% 0, 20% 50%, 29% 100%, 100% 100%); }
-  92% { clip-path: polygon(6% 0, 100% 0, 2% 50%, 5% 100%, 100% 100%); }
-  100% { clip-path: polygon(0 0, 100% 0, 0 50%, 0 100%, 100% 100%); }
-}
-
-@keyframes reader-portrait-fold-travel-right {
-  0% { left: 0; }
-  18% { left: 13%; }
-  45% { left: 49%; }
-  72% { left: 80%; }
-  92% { left: 98%; }
-  100% { left: 100%; }
-}
-
-@keyframes reader-portrait-fold-travel-left {
-  0% { right: 0; }
-  18% { right: 13%; }
-  45% { right: 49%; }
-  72% { right: 80%; }
-  92% { right: 98%; }
-  100% { right: 100%; }
-}
-
 @keyframes reader-portrait-fold-depth {
-  0% { width: 34px; opacity: .62; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .12)); }
-  42% { width: 92px; opacity: 1; filter: drop-shadow(0 6px 8px rgba(0, 0, 0, .36)); }
-  72% { width: 68px; opacity: .98; filter: drop-shadow(0 4px 6px rgba(0, 0, 0, .28)); }
-  100% { width: 30px; opacity: .58; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .1)); }
+  0% { width: 22px; opacity: .58; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .12)); }
+  42% { width: 64px; opacity: 1; filter: drop-shadow(0 5px 7px rgba(0, 0, 0, .32)); }
+  72% { width: 48px; opacity: .96; filter: drop-shadow(0 4px 5px rgba(0, 0, 0, .24)); }
+  100% { width: 20px; opacity: .54; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .1)); }
 }
 
 .reader-turn-underlay .reader-page,

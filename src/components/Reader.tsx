@@ -122,8 +122,6 @@ function PageCurl({ pdf, page, count, spread, direction, turn, width, height, zo
     '--reader-curl-curve': curve,
     '--reader-curl-touch-y': `${turn.touchY * 100}%`,
     '--reader-curl-lift': `${(turn.touchY - .5) * curve * 5.5}deg`,
-    '--reader-curl-top-bend': `${curve * 10}px`,
-    '--reader-curl-mid-bend': `${curve * 22}px`,
     '--reader-turn-duration': `${TURN_SETTLE_MS}ms`,
   } as React.CSSProperties;
 
