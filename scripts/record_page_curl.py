@@ -167,14 +167,18 @@ def capture_browser_frames() -> None:
         page.mouse.move(620, 590, steps=4)
         portrait_forward = page.locator('.reader-turn-layer[data-turn-direction="forward"][data-turn-axis="left"].is-single')
         portrait_forward.wait_for(timeout=5_000)
-        if not portrait_forward.evaluate("element => element.classList.contains('is-portrait-turn')"):
-            raise AssertionError("Portrait forward turn did not use the shared paper-fold model")
-        if portrait_forward.locator('.reader-turn-sheet').count():
-            raise AssertionError("Portrait forward turn fell back to the separate 3D sheet model")
-        if portrait_forward.locator('.reader-turn-portrait-fold').count() != 1:
-            raise AssertionError("Portrait forward turn did not render the shared paper fold")
+        if portrait_forward.locator('.reader-turn-sheet').count() != 1:
+            raise AssertionError("Portrait forward turn did not use its 3D page sheet")
+        if portrait_forward.locator('.reader-turn-fold').count() != 1:
+            raise AssertionError("Portrait forward turn did not render its page-edge fold")
+        if portrait_forward.locator('.reader-turn-front canvas[aria-label="2ページ"]').count() != 1:
+            raise AssertionError("Portrait forward turn did not lift the current page")
+        if portrait_forward.locator('.reader-turn-back canvas[aria-label="3ページ"]').count() != 1:
+            raise AssertionError("Portrait forward turn did not place the next page on the reverse face")
         if portrait_forward.locator('.reader-turn-underlay canvas[aria-label="3ページ"]').count() != 1:
             raise AssertionError("Portrait forward turn did not uncover the next page")
+        portrait_forward_angle = portrait_forward.evaluate("element => Number.parseFloat(getComputedStyle(element).getPropertyValue('--reader-curl-angle'))")
+        page.wait_for_timeout(150)
         page.mouse.up()
         page.wait_for_timeout(1300)
 
@@ -183,10 +187,22 @@ def capture_browser_frames() -> None:
         page.mouse.move(200, 590, steps=4)
         portrait_backward = page.locator('.reader-turn-layer[data-turn-direction="backward"][data-turn-axis="left"].is-single')
         portrait_backward.wait_for(timeout=5_000)
-        if not portrait_backward.evaluate("element => element.classList.contains('is-portrait-turn')"):
-            raise AssertionError("Portrait backward turn did not use the shared paper-fold model")
+        if portrait_backward.locator('.reader-turn-sheet').count() != 1:
+            raise AssertionError("Portrait backward turn did not reuse the forward 3D page sheet")
+        if portrait_backward.locator('.reader-turn-fold').count() != 1:
+            raise AssertionError("Portrait backward turn did not reuse the forward page-edge fold")
+        if portrait_backward.locator('.reader-turn-front canvas[aria-label="2ページ"]').count() != 1:
+            raise AssertionError("Portrait backward turn did not lift the current page")
+        if portrait_backward.locator('.reader-turn-back canvas[aria-label="1ページ"]').count() != 1:
+            raise AssertionError("Portrait backward turn did not place the previous page on the reverse face")
+        portrait_backward_angle = portrait_backward.evaluate("element => Number.parseFloat(getComputedStyle(element).getPropertyValue('--reader-curl-angle'))")
+        if portrait_forward_angle >= 0 or portrait_backward_angle <= 0:
+            raise AssertionError("Portrait forward and backward turns did not rotate in opposite directions")
+        if abs(abs(portrait_forward_angle) - abs(portrait_backward_angle)) > .01:
+            raise AssertionError("Portrait forward and backward turns did not use the same rotation magnitude")
         if page.locator('.reader-turn-layer .reader-page-message:visible').count():
             raise AssertionError("Cached portrait pages flashed a loading placeholder when turning back")
+        page.wait_for_timeout(150)
         page.mouse.up()
         page.wait_for_timeout(1300)
         if page.locator('.reader-pages').get_attribute('data-visible-pages') != '2':
@@ -197,41 +213,22 @@ def capture_browser_frames() -> None:
           const started = performance.now();
           const sample = () => {
             const layer = document.querySelector('.reader-turn-layer');
-            const fold = layer?.querySelector('.reader-turn-portrait-fold');
-            const underlay = layer?.querySelector('.reader-turn-underlay');
-            const target = underlay?.querySelector('.reader-page');
-            const foldRect = fold?.getBoundingClientRect();
-            const underlayRect = underlay?.getBoundingClientRect();
-            const targetRect = target?.getBoundingClientRect();
-            const clipPath = underlay ? getComputedStyle(underlay).clipPath : 'none';
-            const insetValues = clipPath.startsWith('inset(')
-              ? clipPath.slice(6, -1).trim().split(/\s+/)
-              : [];
-            const toPixels = (value) => {
-              if (!underlayRect || !value) return 0;
-              return value.endsWith('%')
-                ? Number.parseFloat(value) * underlayRect.width / 100
-                : Number.parseFloat(value);
-            };
-            const horizontalInset = insetValues.length === 1 ? insetValues[0] : insetValues[1];
-            const leftInset = insetValues.length >= 4 ? insetValues[3] : horizontalInset;
-            const rightInset = horizontalInset;
-            const revealEdge = !underlayRect || !insetValues.length
-              ? null
-              : underlayRect.left + (layer?.classList.contains('is-right')
-                ? underlayRect.width - toPixels(rightInset)
-                : toPixels(leftInset));
-            const foldCenter = foldRect ? foldRect.left + foldRect.width / 2 : null;
+            const sheet = layer?.querySelector('.reader-turn-sheet');
+            const transform = sheet ? getComputedStyle(sheet).transform : 'none';
+            const matrix = transform === 'none' ? null : new DOMMatrixReadOnly(transform);
+            const sheetRect = sheet?.getBoundingClientRect();
             window.__portraitTurnFrames.push({
               elapsed: performance.now() - started,
               hasTurn: Boolean(layer),
               messageCount: document.querySelectorAll('.reader-turn-layer .reader-page-message').length,
-              hasFold: Boolean(fold),
-              foldCenter: foldCenter ?? 0,
-              edgeGap: foldCenter === null || revealEdge === null ? 0 : Math.abs(foldCenter - revealEdge),
-              targetLeft: targetRect?.left ?? 0,
-              targetWidth: targetRect?.width ?? 0,
-              clipPath: underlay ? getComputedStyle(underlay).clipPath : 'none',
+              sheetCount: layer?.querySelectorAll('.reader-turn-sheet').length ?? 0,
+              pageFoldCount: layer?.querySelectorAll('.reader-turn-fold').length ?? 0,
+              localFoldCount: layer?.querySelectorAll('.reader-turn-portrait-fold').length ?? 0,
+              frontCount: layer?.querySelectorAll('.reader-turn-front canvas[aria-label="2ページ"]').length ?? 0,
+              backCount: layer?.querySelectorAll('.reader-turn-back canvas[aria-label="1ページ"]').length ?? 0,
+              angle: matrix ? Math.acos(Math.max(-1, Math.min(1, matrix.m11))) : 0,
+              sheetWidth: sheetRect?.width ?? 0,
+              transform,
             });
             if (performance.now() - started < 1500) requestAnimationFrame(sample);
           };
@@ -248,36 +245,37 @@ def capture_browser_frames() -> None:
         active_frames = [frame for frame in portrait_frames if frame["hasTurn"]]
         if len(active_frames) < 30:
             raise AssertionError(f"Portrait backward animation disappeared too early: {len(active_frames)} frames")
-        if not all(frame["hasFold"] for frame in active_frames):
-            raise AssertionError("Portrait backward turn lost its paper fold during the animation")
-        if any(not frame["clipPath"].startswith("inset(") for frame in active_frames):
-            raise AssertionError("Portrait backward turn used a polygon that can tear the page into triangular fragments")
-        fold_centers = [frame["foldCenter"] for frame in active_frames]
-        if max(fold_centers) - min(fold_centers) < 650:
-            raise AssertionError("Portrait backward fold did not travel across the page")
-        edge_gaps = [frame["edgeGap"] for frame in active_frames]
-        if max(edge_gaps) > 14:
-            raise AssertionError(f"Portrait backward fold detached from the revealed page edge: {max(edge_gaps):.1f}px")
-        print(f"Portrait backward fold/reveal edge gap: {max(edge_gaps):.1f}px")
-        clip_paths = {frame["clipPath"] for frame in active_frames if frame["clipPath"] != "none"}
-        if len(clip_paths) < 8:
-            raise AssertionError("Portrait backward page reveal did not follow the paper fold")
-        target_lefts = [frame["targetLeft"] for frame in active_frames]
-        target_widths = [frame["targetWidth"] for frame in active_frames]
-        if max(target_lefts) - min(target_lefts) > 2 or min(target_widths) < 780:
-            raise AssertionError("Portrait backward target page slid or warped instead of staying anchored")
+        if any(frame["sheetCount"] != 1 or frame["pageFoldCount"] != 1 for frame in active_frames):
+            raise AssertionError("Portrait backward turn lost the forward 3D sheet or page fold")
+        if any(frame["localFoldCount"] for frame in active_frames):
+            raise AssertionError("Portrait backward turn still used the old return-only fold renderer")
+        if any(frame["frontCount"] != 1 or frame["backCount"] != 1 for frame in active_frames):
+            raise AssertionError("Portrait backward turn changed page faces during the animation")
+        angles = [frame["angle"] for frame in active_frames]
+        if max(angles) < 2.9 or len({round(angle, 2) for angle in angles}) < 8:
+            raise AssertionError("Portrait backward sheet did not complete the forward-style 3D rotation")
+        if any(next_angle + .05 < angle for angle, next_angle in zip(angles, angles[1:])):
+            raise AssertionError("Portrait backward 3D rotation twitched or reversed mid-animation")
+        sheet_widths = [frame["sheetWidth"] for frame in active_frames]
+        if min(sheet_widths) > 120 or max(sheet_widths) < 780:
+            raise AssertionError("Portrait backward page did not rotate edge-on like the forward page")
+        print(f"Portrait backward 3D rotation: {max(angles):.2f}rad across {len(active_frames)} frames")
         page.locator('.reader-pages[data-visible-pages="1"]').wait_for(timeout=5_000)
         page.get_by_role("img", name="1ページ").wait_for(timeout=5_000)
         if page.locator(".reader-page-message:visible").count():
             raise AssertionError("Portrait backward turn left a loading placeholder after completion")
 
-        # The forward tap must now be the same fold/reveal motion in reverse.
+        # The forward tap and backward tap must use the same full 3D sheet.
         page.mouse.click(795, 590)
-        shared_forward = page.locator('.reader-turn-layer.is-portrait-turn.is-forward[data-turn-axis="left"]')
+        shared_forward = page.locator('.reader-turn-layer.is-single.is-forward[data-turn-axis="left"]')
         shared_forward.wait_for(timeout=5_000)
         page.wait_for_timeout(500)
-        if shared_forward.locator('.reader-turn-sheet').count():
-            raise AssertionError("Portrait forward and backward turns still used different renderers")
+        if shared_forward.locator('.reader-turn-sheet').count() != 1:
+            raise AssertionError("Portrait forward turn lost its full 3D page sheet")
+        if shared_forward.locator('.reader-turn-fold').count() != 1:
+            raise AssertionError("Portrait forward turn lost its page-edge fold")
+        if shared_forward.locator('.reader-turn-portrait-fold').count():
+            raise AssertionError("Portrait forward turn used the removed return-only renderer")
         page.screenshot(path="/tmp/shosai-portrait-forward.png")
         page.wait_for_timeout(850)
         page.locator('.reader-pages[data-visible-pages="2"]').wait_for(timeout=5_000)
@@ -300,16 +298,18 @@ def capture_browser_frames() -> None:
         page.get_by_label("本の開き方向").select_option("rtl")
         page.get_by_role("button", name="操作パネルを隠す").click()
         page.mouse.click(795, 590)
-        rtl_backward = page.locator('.reader-turn-layer.is-portrait-turn.is-backward[data-turn-side="left"]')
+        rtl_backward = page.locator('.reader-turn-layer.is-single.is-backward[data-turn-side="left"]')
         rtl_backward.wait_for(timeout=5_000)
         if rtl_backward.get_attribute('data-turn-axis') != 'right':
             raise AssertionError("The right-opening portrait return used a different binding axis")
         if rtl_backward.locator('.reader-turn-underlay canvas[aria-label="1ページ"]').count() != 1:
             raise AssertionError("The right-opening portrait return did not reveal the previous page")
-        if rtl_backward.locator('.reader-turn-sheet').count():
-            raise AssertionError("The right-opening portrait return fell back to a sliding page plane")
-        if rtl_backward.locator('.reader-turn-portrait-fold').count() != 1:
-            raise AssertionError("The right-opening portrait return did not render its paper fold")
+        if rtl_backward.locator('.reader-turn-sheet').count() != 1:
+            raise AssertionError("The right-opening portrait return did not use the forward 3D sheet")
+        if rtl_backward.locator('.reader-turn-fold').count() != 1:
+            raise AssertionError("The right-opening portrait return did not render the forward page fold")
+        if rtl_backward.locator('.reader-turn-portrait-fold').count():
+            raise AssertionError("The right-opening portrait return used the removed return-only renderer")
         page.wait_for_timeout(500)
         page.screenshot(path="/tmp/shosai-portrait-backward-rtl.png")
         page.wait_for_timeout(850)

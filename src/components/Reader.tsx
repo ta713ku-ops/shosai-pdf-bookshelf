@@ -107,7 +107,6 @@ function PageCurl({ pdf, page, count, spread, direction, turn, width, height, zo
     ? (((turn.delta > 0) === (direction === 'ltr')) ? 'right' : 'left')
     : (direction === 'ltr' ? 'right' : 'left');
   const targetIsCover = spread && targetPages.length === 1 && targetPages[0] === 1;
-  const portraitTurn = !spread;
   const frontPage = turn.delta > 0 ? currentPages[currentPages.length - 1] : currentPages[0];
   const backPage = turn.delta > 0 ? targetPages[0] : targetPages[targetPages.length - 1];
   const underPage = turn.delta > 0 ? targetPages[targetPages.length - 1] : targetPages[0];
@@ -117,7 +116,6 @@ function PageCurl({ pdf, page, count, spread, direction, turn, width, height, zo
   const curve = Math.sin(Math.PI * turn.progress);
   const style = {
     '--reader-curl-angle': `${turnSign * travel * 180}deg`,
-    '--reader-curl-edge': `${(1 - turn.progress) * 100}%`,
     '--reader-curl-progress': turn.progress,
     '--reader-curl-curve': curve,
     '--reader-curl-touch-y': `${turn.touchY * 100}%`,
@@ -126,7 +124,7 @@ function PageCurl({ pdf, page, count, spread, direction, turn, width, height, zo
   } as React.CSSProperties;
 
   return <div
-    className={`reader-turn-layer ${spread ? 'is-spread' : 'is-single'} is-${side} is-${turn.delta > 0 ? 'forward' : 'backward'} ${portraitTurn ? 'is-portrait-turn' : ''} ${targetIsCover ? 'is-target-cover' : ''} is-${turn.phase} is-${turn.origin}`}
+    className={`reader-turn-layer ${spread ? 'is-spread' : 'is-single'} is-${side} is-${turn.delta > 0 ? 'forward' : 'backward'} ${targetIsCover ? 'is-target-cover' : ''} is-${turn.phase} is-${turn.origin}`}
     data-turn-side={side}
     data-turn-axis={side === 'right' ? 'left' : 'right'}
     data-turn-direction={turn.delta > 0 ? 'forward' : 'backward'}
@@ -136,20 +134,18 @@ function PageCurl({ pdf, page, count, spread, direction, turn, width, height, zo
     <div className="reader-turn-underlay">
       {!hideUnderlay && <PageCanvas pdf={pdf} number={underPage} width={width} height={height} zoom={zoom} />}
     </div>
-    {portraitTurn ? <div className="reader-turn-portrait-fold" /> : <>
-      <div className="reader-turn-cast-shadow" />
-      <div className="reader-turn-sheet">
-        <div className="reader-turn-face reader-turn-front">
-          <PageCanvas pdf={pdf} number={frontPage} width={width} height={height} zoom={zoom} />
-          <span className="reader-turn-ink-shadow" />
-        </div>
-        <div className="reader-turn-face reader-turn-back">
-          <PageCanvas pdf={pdf} number={backPage} width={width} height={height} zoom={zoom} />
-          <span className="reader-turn-paper-glow" />
-        </div>
-        <span className="reader-turn-fold" />
+    <div className="reader-turn-cast-shadow" />
+    <div className="reader-turn-sheet">
+      <div className="reader-turn-face reader-turn-front">
+        <PageCanvas pdf={pdf} number={frontPage} width={width} height={height} zoom={zoom} />
+        <span className="reader-turn-ink-shadow" />
       </div>
-    </>}
+      <div className="reader-turn-face reader-turn-back">
+        <PageCanvas pdf={pdf} number={backPage} width={width} height={height} zoom={zoom} />
+        <span className="reader-turn-paper-glow" />
+      </div>
+      <span className="reader-turn-fold" />
+    </div>
   </div>;
 }
 
