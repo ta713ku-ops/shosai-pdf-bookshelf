@@ -191,15 +191,19 @@ def capture_browser_frames() -> None:
             raise AssertionError("Portrait backward turn did not reuse the forward 3D page sheet")
         if portrait_backward.locator('.reader-turn-fold').count() != 1:
             raise AssertionError("Portrait backward turn did not reuse the forward page-edge fold")
-        if portrait_backward.locator('.reader-turn-front canvas[aria-label="2ページ"]').count() != 1:
-            raise AssertionError("Portrait backward turn did not lift the current page")
-        if portrait_backward.locator('.reader-turn-back canvas[aria-label="1ページ"]').count() != 1:
-            raise AssertionError("Portrait backward turn did not place the previous page on the reverse face")
+        if portrait_backward.get_attribute('data-turn-trajectory') != 'entering':
+            raise AssertionError("Portrait backward turn did not use the time-reversed entry trajectory")
+        if portrait_backward.locator('.reader-turn-front canvas[aria-label="1ページ"]').count() != 1:
+            raise AssertionError("Portrait backward turn did not place the previous page on the entering face")
+        if portrait_backward.locator('.reader-turn-back canvas[aria-label="2ページ"]').count() != 1:
+            raise AssertionError("Portrait backward turn did not keep the current page on the reverse face")
+        if portrait_backward.locator('.reader-turn-underlay canvas[aria-label="2ページ"]').count() != 1:
+            raise AssertionError("Portrait backward turn did not keep the current page under the entering sheet")
         portrait_backward_angle = portrait_backward.evaluate("element => Number.parseFloat(getComputedStyle(element).getPropertyValue('--reader-curl-angle'))")
-        if portrait_forward_angle >= 0 or portrait_backward_angle <= 0:
-            raise AssertionError("Portrait forward and backward turns did not rotate in opposite directions")
-        if abs(abs(portrait_forward_angle) - abs(portrait_backward_angle)) > .01:
-            raise AssertionError("Portrait forward and backward turns did not use the same rotation magnitude")
+        if portrait_forward_angle >= 0 or portrait_backward_angle >= 0:
+            raise AssertionError("Portrait forward and backward turns did not share the same visible rotation arc")
+        if abs((portrait_forward_angle + portrait_backward_angle) + 180) > .01:
+            raise AssertionError("Portrait backward turn was not the exact time-reverse of the forward turn")
         if page.locator('.reader-turn-layer .reader-page-message:visible').count():
             raise AssertionError("Cached portrait pages flashed a loading placeholder when turning back")
         page.wait_for_timeout(150)
@@ -224,8 +228,8 @@ def capture_browser_frames() -> None:
               sheetCount: layer?.querySelectorAll('.reader-turn-sheet').length ?? 0,
               pageFoldCount: layer?.querySelectorAll('.reader-turn-fold').length ?? 0,
               localFoldCount: layer?.querySelectorAll('.reader-turn-portrait-fold').length ?? 0,
-              frontCount: layer?.querySelectorAll('.reader-turn-front canvas[aria-label="2ページ"]').length ?? 0,
-              backCount: layer?.querySelectorAll('.reader-turn-back canvas[aria-label="1ページ"]').length ?? 0,
+              frontCount: layer?.querySelectorAll('.reader-turn-front canvas[aria-label="1ページ"]').length ?? 0,
+              backCount: layer?.querySelectorAll('.reader-turn-back canvas[aria-label="2ページ"]').length ?? 0,
               angle: matrix ? Math.acos(Math.max(-1, Math.min(1, matrix.m11))) : 0,
               sheetWidth: sheetRect?.width ?? 0,
               transform,
@@ -252,14 +256,14 @@ def capture_browser_frames() -> None:
         if any(frame["frontCount"] != 1 or frame["backCount"] != 1 for frame in active_frames):
             raise AssertionError("Portrait backward turn changed page faces during the animation")
         angles = [frame["angle"] for frame in active_frames]
-        if max(angles) < 2.9 or len({round(angle, 2) for angle in angles}) < 8:
-            raise AssertionError("Portrait backward sheet did not complete the forward-style 3D rotation")
-        if any(next_angle + .05 < angle for angle, next_angle in zip(angles, angles[1:])):
-            raise AssertionError("Portrait backward 3D rotation twitched or reversed mid-animation")
+        if max(angles) < 2.9 or min(angles) > .2 or len({round(angle, 2) for angle in angles}) < 8:
+            raise AssertionError("Portrait backward sheet did not complete the time-reversed 3D rotation")
+        if any(next_angle > angle + .05 for angle, next_angle in zip(angles, angles[1:])):
+            raise AssertionError("Portrait backward 3D rotation twitched or ran forward mid-animation")
         sheet_widths = [frame["sheetWidth"] for frame in active_frames]
         if min(sheet_widths) > 120 or max(sheet_widths) < 780:
             raise AssertionError("Portrait backward page did not rotate edge-on like the forward page")
-        print(f"Portrait backward 3D rotation: {max(angles):.2f}rad across {len(active_frames)} frames")
+        print(f"Portrait backward time-reversed rotation: {max(angles):.2f}->{min(angles):.2f}rad across {len(active_frames)} frames")
         page.locator('.reader-pages[data-visible-pages="1"]').wait_for(timeout=5_000)
         page.get_by_role("img", name="1ページ").wait_for(timeout=5_000)
         if page.locator(".reader-page-message:visible").count():
@@ -302,8 +306,14 @@ def capture_browser_frames() -> None:
         rtl_backward.wait_for(timeout=5_000)
         if rtl_backward.get_attribute('data-turn-axis') != 'right':
             raise AssertionError("The right-opening portrait return used a different binding axis")
-        if rtl_backward.locator('.reader-turn-underlay canvas[aria-label="1ページ"]').count() != 1:
-            raise AssertionError("The right-opening portrait return did not reveal the previous page")
+        if rtl_backward.get_attribute('data-turn-trajectory') != 'entering':
+            raise AssertionError("The right-opening portrait return did not use the time-reversed entry trajectory")
+        if rtl_backward.locator('.reader-turn-front canvas[aria-label="1ページ"]').count() != 1:
+            raise AssertionError("The right-opening portrait return did not place the previous page on the entering face")
+        if rtl_backward.locator('.reader-turn-back canvas[aria-label="2ページ"]').count() != 1:
+            raise AssertionError("The right-opening portrait return did not keep the current page on the reverse face")
+        if rtl_backward.locator('.reader-turn-underlay canvas[aria-label="2ページ"]').count() != 1:
+            raise AssertionError("The right-opening portrait return did not keep the current page underneath")
         if rtl_backward.locator('.reader-turn-sheet').count() != 1:
             raise AssertionError("The right-opening portrait return did not use the forward 3D sheet")
         if rtl_backward.locator('.reader-turn-fold').count() != 1:

@@ -107,16 +107,27 @@ function PageCurl({ pdf, page, count, spread, direction, turn, width, height, zo
     ? (((turn.delta > 0) === (direction === 'ltr')) ? 'right' : 'left')
     : (direction === 'ltr' ? 'right' : 'left');
   const targetIsCover = spread && targetPages.length === 1 && targetPages[0] === 1;
-  const frontPage = turn.delta > 0 ? currentPages[currentPages.length - 1] : currentPages[0];
-  const backPage = turn.delta > 0 ? targetPages[0] : targetPages[targetPages.length - 1];
-  const underPage = turn.delta > 0 ? targetPages[targetPages.length - 1] : targetPages[0];
+  const portraitBackward = !spread && turn.delta < 0;
+  // In portrait, returning is the exact time-reverse of advancing: the target
+  // page starts behind the binding and opens onto the current page. Reversing
+  // only the rotation sign makes Mobile Safari paint the sheet behind the
+  // underlay, which looks like an abrupt page swap instead of a paper turn.
+  const frontPage = portraitBackward
+    ? targetPages[0]
+    : turn.delta > 0 ? currentPages[currentPages.length - 1] : currentPages[0];
+  const backPage = portraitBackward
+    ? currentPages[0]
+    : turn.delta > 0 ? targetPages[0] : targetPages[targetPages.length - 1];
+  const underPage = portraitBackward
+    ? currentPages[0]
+    : turn.delta > 0 ? targetPages[targetPages.length - 1] : targetPages[0];
   const hideUnderlay = targetIsCover;
-  const travel = turn.progress;
-  const turnSign = (side === 'right' ? -1 : 1) * (!spread && turn.delta < 0 ? -1 : 1);
-  const curve = Math.sin(Math.PI * turn.progress);
+  const visualProgress = portraitBackward ? 1 - turn.progress : turn.progress;
+  const turnSign = side === 'right' ? -1 : 1;
+  const curve = Math.sin(Math.PI * visualProgress);
   const style = {
-    '--reader-curl-angle': `${turnSign * travel * 180}deg`,
-    '--reader-curl-progress': turn.progress,
+    '--reader-curl-angle': `${turnSign * visualProgress * 180}deg`,
+    '--reader-curl-progress': visualProgress,
     '--reader-curl-curve': curve,
     '--reader-curl-touch-y': `${turn.touchY * 100}%`,
     '--reader-curl-lift': `${(turn.touchY - .5) * curve * 5.5}deg`,
@@ -128,6 +139,7 @@ function PageCurl({ pdf, page, count, spread, direction, turn, width, height, zo
     data-turn-side={side}
     data-turn-axis={side === 'right' ? 'left' : 'right'}
     data-turn-direction={turn.delta > 0 ? 'forward' : 'backward'}
+    data-turn-trajectory={portraitBackward ? 'entering' : 'leaving'}
     aria-hidden="true"
     style={style}
   >
