@@ -84,6 +84,41 @@ export function updateBook(id: string, patch: BookUpdate): Promise<BookRecord | 
   });
 }
 
+function moveBookRecords(
+  tx: IDBTransaction,
+  ids: Iterable<string>,
+  shelfId: string | null,
+  done: (books: BookRecord[]) => void,
+) {
+  const pending = new Set(ids);
+  const updated: BookRecord[] = [];
+  const store = tx.objectStore('books');
+  const now = new Date().toISOString();
+  const request = store.openCursor();
+  request.onsuccess = () => {
+    const cursor = request.result;
+    if (!cursor) {
+      done(updated);
+      return;
+    }
+    const book = cursor.value as BookRecord;
+    if (pending.has(book.id)) {
+      const next = applyBookUpdate(book, { shelfId }, now);
+      cursor.update(next);
+      updated.push(next);
+    }
+    cursor.continue();
+  };
+}
+
+/** Move every selected book atomically so a partial shelf move cannot be saved. */
+export function moveBooksToShelf(ids: string[], shelfId: string | null): Promise<BookRecord[]> {
+  if (!ids.length) return Promise.resolve([]);
+  return transaction(['books'], 'readwrite', (tx, result) => {
+    moveBookRecords(tx, ids, shelfId, result);
+  });
+}
+
 export function deleteBook(id: string): Promise<void> {
   return transaction(['books', 'pdfs'], 'readwrite', tx => {
     tx.objectStore('books').delete(id);
@@ -103,6 +138,18 @@ export async function saveShelf(shelf: ShelfRecord): Promise<ShelfRecord> {
   return transaction(['shelves'], 'readwrite', (tx, result) => {
     tx.objectStore('shelves').put(normalized);
     result(normalized);
+  });
+}
+
+/** Create a shelf and move the selected books in the same transaction. */
+export async function saveShelfAndMoveBooks(
+  shelf: ShelfRecord,
+  bookIds: string[],
+): Promise<{ shelf: ShelfRecord; books: BookRecord[] }> {
+  const normalized = { ...shelf, name: normalizeShelfName(shelf.name) };
+  return transaction(['books', 'shelves'], 'readwrite', (tx, result) => {
+    tx.objectStore('shelves').put(normalized);
+    moveBookRecords(tx, bookIds, normalized.id, books => result({ shelf: normalized, books }));
   });
 }
 

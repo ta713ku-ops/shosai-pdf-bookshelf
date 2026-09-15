@@ -19,8 +19,10 @@ describe('book metadata', () => {
     expect(normalizeBook({ ...book, pageCount: NaN, currentPage: Infinity })).toMatchObject({ pageCount: 1, currentPage: 1 });
   });
   it('updates reading position without losing identity or file metadata', () => {
-    const updated = applyBookUpdate(book, { currentPage: 8, shelfId: 'shelf-1' }, 'later');
+    const cover = new Blob(['cover'], { type: 'image/png' });
+    const updated = applyBookUpdate({ ...book, cover }, { currentPage: 8, shelfId: 'shelf-1' }, 'later');
     expect(updated).toMatchObject({ id: book.id, fileName: book.fileName, currentPage: 8, shelfId: 'shelf-1', updatedAt: 'later', addedAt: book.addedAt });
+    expect(updated.cover).toBe(cover);
     expect(book.currentPage).toBe(1);
   });
 });

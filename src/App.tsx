@@ -6,8 +6,10 @@ import {
   getBookPdf,
   listBooks,
   listShelves,
+  moveBooksToShelf,
   saveBook,
   saveShelf,
+  saveShelfAndMoveBooks,
   updateBook,
 } from './data/libraryDb'
 import type { BookRecord, BookUpdate, ShelfRecord } from './domain/books'
@@ -68,11 +70,13 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`
 }
 
-function BookTile({ book, organizing, onOpen, onEdit }: {
+function BookTile({ book, organizing, selected, onOpen, onEdit, onToggleSelection }: {
   book: BookRecord
   organizing: boolean
+  selected: boolean
   onOpen: () => void
   onEdit: () => void
+  onToggleSelection: () => void
 }) {
   const [coverUrl, setCoverUrl] = useState('')
   const longPress = useRef<{ timer: number | null; startX: number; startY: number; triggered: boolean }>({
@@ -100,17 +104,18 @@ function BookTile({ book, organizing, onOpen, onEdit }: {
     setCoverUrl(url)
     return () => URL.revokeObjectURL(url)
   }, [book.cover])
-  return <article className={`book-card ${organizing ? 'is-organizing' : ''}`}>
+  return <article className={`book-card ${organizing ? 'is-organizing' : ''} ${selected ? 'is-selected' : ''}`}>
     <button
       className="book-cover"
-      aria-label={`${book.title}を開く。${book.currentPage}/${book.pageCount}ページ`}
+      aria-label={organizing ? `${book.title}を${selected ? '選択解除' : '選択'}` : `${book.title}を開く。${book.currentPage}/${book.pageCount}ページ`}
+      aria-pressed={organizing ? selected : undefined}
       onClick={(event) => {
         if (longPress.current.triggered) {
           event.preventDefault()
           longPress.current.triggered = false
           return
         }
-        organizing ? onEdit() : onOpen()
+        organizing ? onToggleSelection() : onOpen()
       }}
       onContextMenu={(event) => { event.preventDefault(); onEdit() }}
       onKeyDown={(event) => {
@@ -139,6 +144,7 @@ function BookTile({ book, organizing, onOpen, onEdit }: {
       onPointerLeave={clearLongPress}
     >
       {coverUrl ? <img src={coverUrl} alt="" /> : <span className="fallback-cover"><small>PDF</small>{book.title}</span>}
+      {organizing && <span className="book-selection-mark" aria-hidden="true">{selected ? '✓' : ''}</span>}
       <span className="book-progress" style={{ '--progress': `${percent}%` } as React.CSSProperties} aria-hidden="true" />
     </button>
     <button className="book-edit-action" aria-label={`${book.title}の編集メニュー`} onClick={onEdit}>編集</button>
@@ -160,6 +166,8 @@ export function App() {
   const [newShelfName, setNewShelfName] = useState('')
   const [addingShelf, setAddingShelf] = useState(false)
   const [organizing, setOrganizing] = useState(false)
+  const [selectedBookIds, setSelectedBookIds] = useState<Set<string>>(() => new Set())
+  const [moveDestination, setMoveDestination] = useState('')
   const [shelfLayout, setShelfLayout] = useState<ShelfLayout>(INITIAL_SHELF_LAYOUT)
   const [shelfPage, setShelfPage] = useState(0)
   const [shelfDragX, setShelfDragX] = useState(0)
@@ -254,6 +262,67 @@ export function App() {
     : filter === 'unfiled'
       ? '未分類'
       : shelves.find((shelf) => shelf.id === filter)?.name ?? '本棚'
+
+  const mergeMovedBooks = (movedBooks: BookRecord[]) => {
+    const movedById = new Map(movedBooks.map((book) => [book.id, book]))
+    setBooks((current) => current.map((book) => {
+      const moved = movedById.get(book.id)
+      return moved ? { ...moved, cover: book.cover } : book
+    }))
+  }
+
+  const startOrganizing = () => {
+    setSelectedBookIds(new Set())
+    setMoveDestination('')
+    setOrganizing(true)
+    libraryMenu.current?.close()
+  }
+
+  const finishOrganizing = () => {
+    setSelectedBookIds(new Set())
+    setMoveDestination('')
+    setOrganizing(false)
+  }
+
+  const toggleBookSelection = (id: string) => {
+    setSelectedBookIds((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleVisibleSelection = () => {
+    setSelectedBookIds((current) => {
+      const next = new Set(current)
+      const allVisibleSelected = visibleBooks.length > 0 && visibleBooks.every((book) => next.has(book.id))
+      visibleBooks.forEach((book) => allVisibleSelected ? next.delete(book.id) : next.add(book.id))
+      return next
+    })
+  }
+
+  const moveSelectedBooks = async () => {
+    if (!selectedBookIds.size || !moveDestination) return
+    const shelfId = moveDestination === 'unfiled' ? null : moveDestination
+    try {
+      const moved = await moveBooksToShelf([...selectedBookIds], shelfId)
+      mergeMovedBooks(moved)
+      setFilter(shelfId ?? 'unfiled')
+      setShelfPage(0)
+      const count = moved.length
+      finishOrganizing()
+      setNotice(`${count}冊を移動しました。`)
+    } catch (reason) {
+      setError(errorMessage(reason))
+    }
+  }
+
+  const openShelfCreator = () => {
+    setNewShelfName('')
+    setAddingShelf(true)
+    libraryMenu.current?.showModal()
+  }
 
   const importFiles = async (files: FileList | null) => {
     if (!files?.length || importInFlight.current) return
@@ -372,9 +441,21 @@ export function App() {
   const createShelf = async (event: React.FormEvent) => {
     event.preventDefault()
     try {
-      const shelf = await saveShelf({ id: makeId('shelf'), name: newShelfName, createdAt: new Date().toISOString() })
+      const draft = { id: makeId('shelf'), name: newShelfName, createdAt: new Date().toISOString() }
+      const selectedIds = organizing ? [...selectedBookIds] : []
+      const { shelf, movedBooks } = selectedIds.length
+        ? await saveShelfAndMoveBooks(draft, selectedIds).then((saved) => ({ shelf: saved.shelf, movedBooks: saved.books }))
+        : { shelf: await saveShelf(draft), movedBooks: [] }
       setShelves((current) => [...current, shelf])
-      setFilter(shelf.id)
+      if (movedBooks.length) {
+        mergeMovedBooks(movedBooks)
+        setFilter(shelf.id)
+        setShelfPage(0)
+        finishOrganizing()
+        setNotice(`「${shelf.name}」を作成し、${movedBooks.length}冊を移動しました。`)
+      } else {
+        setNotice(`「${shelf.name}」を追加しました。`)
+      }
       setNewShelfName('')
       setAddingShelf(false)
       libraryMenu.current?.close()
@@ -396,6 +477,11 @@ export function App() {
     try {
       await deleteBook(book.id)
       setBooks((current) => current.filter((item) => item.id !== book.id))
+      setSelectedBookIds((current) => {
+        const next = new Set(current)
+        next.delete(book.id)
+        return next
+      })
       setEditingBook(null)
       setNotice('本を削除しました。')
     } catch (reason) {
@@ -425,7 +511,7 @@ export function App() {
           <label className="search-field"><span className="sr-only">本を検索</span><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="本を検索" /></label>
           {query && <button className="search-clear" onClick={() => setQuery('')}>検索を解除</button>}
           <button className="import-button" disabled={importing} onClick={() => { libraryMenu.current?.close(); fileInput.current?.click() }}>{importing ? '表紙を準備中…' : 'PDFを追加'}</button>
-          <button className="organize-button" onClick={() => { setOrganizing(true); libraryMenu.current?.close() }}>本棚を整理</button>
+          <button className="organize-button" onClick={startOrganizing}>本棚を整理</button>
         </div>
         <nav className="shelf-nav" aria-label="表示する本棚">
           <button className={filter === 'all' ? 'selected' : ''} onClick={() => setFilter('all')}><span>すべての本</span><strong>{books.length}</strong></button>
@@ -441,7 +527,7 @@ export function App() {
           <form className="new-shelf-form" onSubmit={(event) => void createShelf(event)}>
             <label htmlFor="new-shelf">本棚の名前</label>
             <input id="new-shelf" autoFocus maxLength={80} value={newShelfName} onChange={(event) => setNewShelfName(event.target.value)} />
-            <div><button type="button" onClick={() => setAddingShelf(false)}>取消</button><button className="primary" type="submit">追加</button></div>
+            <div><button type="button" onClick={() => setAddingShelf(false)}>取消</button><button className="primary" type="submit">{organizing && selectedBookIds.size ? `追加して${selectedBookIds.size}冊を移動` : '追加'}</button></div>
           </form>
         ) : <button className="add-shelf" onClick={() => setAddingShelf(true)}>＋ 本棚を追加</button>}
         <button className="show-library" onClick={() => libraryMenu.current?.close()}>{query ? `検索結果を見る · ${visibleBooks.length}冊` : `${selectedShelfName}を見る · ${visibleBooks.length}冊`}</button>
@@ -453,12 +539,19 @@ export function App() {
         <h2 className="sr-only">{selectedShelfName}</h2>
         {importing && <div className="import-status" role="status">表紙を準備中…</div>}
 
-        <div className="library-feedback">
+        <div className={`library-feedback ${organizing ? 'has-organize-bar' : ''}`}>
           {error && <div className="message error-message" role="alert"><span>{error}</span><button aria-label="エラーを閉じる" onClick={() => setError('')}>×</button></div>}
           {notice && <div className="message notice-message" role="status">{notice}</div>}
         </div>
 
-        {organizing && <div className="organize-bar" role="status"><span>整理中 — 本を選ぶと編集できます</span><button onClick={() => setOrganizing(false)}>完了</button></div>}
+        {organizing && <div className="organize-bar" role="region" aria-label="本棚の整理">
+          <strong>{selectedBookIds.size}冊選択</strong>
+          <button className="organize-select-all" onClick={toggleVisibleSelection}>{visibleBooks.length > 0 && visibleBooks.every((book) => selectedBookIds.has(book.id)) ? '表示中を解除' : '表示中をすべて選択'}</button>
+          <label className="organize-destination"><span className="sr-only">移動先の本棚</span><select aria-label="移動先の本棚" value={moveDestination} onChange={(event) => setMoveDestination(event.target.value)}><option value="">移動先を選ぶ</option><option value="unfiled">未分類</option>{shelves.map((shelf) => <option value={shelf.id} key={shelf.id}>{shelf.name}</option>)}</select></label>
+          <button disabled={!selectedBookIds.size || !moveDestination} onClick={() => void moveSelectedBooks()}>移動</button>
+          <button onClick={openShelfCreator}>新しい本棚</button>
+          <button className="organize-done" onClick={finishOrganizing}>完了</button>
+        </div>}
         <div
           ref={bookshelfRef}
           className={`bookshelf ${shelfDragging ? 'is-dragging' : ''}`}
@@ -512,9 +605,9 @@ export function App() {
               <div className="shelf-track" style={{ transform: `translate3d(calc(${-currentShelfPage * 100}% + ${shelfDragX}px), 0, 0)` }}>
                 {shelfPages.map((pageBooks, pageIndex) => <section className="shelf-page" key={pageIndex} aria-label={`棚ページ${pageIndex + 1}`} aria-hidden={pageIndex !== currentShelfPage} inert={pageIndex !== currentShelfPage ? true : undefined}>
                   <div className="book-grid">
-                    {pageBooks.map((book) => <BookTile key={book.id} book={book} organizing={organizing} onOpen={() => {
+                    {pageBooks.map((book) => <BookTile key={book.id} book={book} organizing={organizing} selected={selectedBookIds.has(book.id)} onOpen={() => {
                       if (performance.now() >= suppressBookOpenUntil.current) void openBook(book)
-                    }} onEdit={() => setEditingBook(book)} />)}
+                    }} onEdit={() => setEditingBook(book)} onToggleSelection={() => toggleBookSelection(book.id)} />)}
                   </div>
                 </section>)}
               </div>
